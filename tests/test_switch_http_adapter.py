@@ -1,0 +1,161 @@
+import json
+
+import httpx
+import pytest
+
+from app.switch_adapter import (
+    CaseCorrelation,
+    MattermostSwitchAdapter,
+    MessageType,
+    SwitchConfiguration,
+    SwitchMalformedResponseError,
+    SwitchProviderError,
+    SwitchTransportError,
+    SwitchUnauthorizedError,
+    SwitchMessage,
+)
+from app.switch_adapter.config import SwitchConfiguration
+
+
+def configuration() -> SwitchConfiguration:
+    return SwitchConfiguration(
+        base_url="https://mattermost.test/",
+        token="secret-token",
+        team_id="team-1",
+        channel_id="channel-1",
+        timeout_seconds=0.5,
+    )
+
+
+def test_configuration_reads_environment_without_exposing_token(monkeypatch):
+    monkeypatch.setenv("SWITCH_BASE_URL", "https://mattermost.test/")
+    monkeypatch.setenv("SWITCH_TOKEN", "secret-token")
+    monkeypatch.setenv("SWITCH_TEAM_ID", "team-1")
+    monkeypatch.setenv("SWITCH_CHANNEL_ID", "channel-1")
+    monkeypatch.setenv("SWITCH_TIMEOUT_SECONDS", "3")
+
+    settings = SwitchConfiguration.from_env()
+
+    assert settings.base_url == "https://mattermost.test"
+    assert settings.timeout_seconds == 3
+    assert "secret-token" not in repr(settings)
+
+
+def message(case_id: str = "case-1") -> SwitchMessage:
+    return SwitchMessage(
+        room_id="channel-1",
+        case=CaseCorrelation(case_id=case_id),
+        message_type=MessageType.HUMAN_DECISION_REQUEST,
+        sender_type="system",
+        sender_id="bursar-coordinator",
+        payload={"case_id": case_id, "allowed_actions": ["approve"]},
+    )
+
+
+def test_resolves_room_posts_typed_message_and_lists_case_messages():
+    posted: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v4/channels/channel-1":
+            return httpx.Response(200, json={"id": "channel-1", "team_id": "team-1", "display_name": "Bursar", "purpose": "AP"})
+        if request.method == "POST" and request.url.path == "/api/v4/posts":
+            body = json.loads(request.content)
+            posted["body"] = body
+            return httpx.Response(201, json={"id": "post-1", "channel_id": "channel-1", "message": body["message"]})
+        if request.method == "GET" and request.url.path == "/api/v4/channels/channel-1/posts":
+            return httpx.Response(200, json={"order": ["post-1"], "posts": {"post-1": {"id": "post-1", "channel_id": "channel-1", "message": posted["body"]["message"]}}})
+        return httpx.Response(404)
+
+    adapter = MattermostSwitchAdapter(configuration(), httpx.Client(transport=httpx.MockTransport(handler)))
+    room = adapter.create_room("bursar-control-room")
+    returned = adapter.post_message(message())
+
+    assert room.room_id == "channel-1"
+    assert returned.message_id == "post-1"
+    assert [item.message_id for item in adapter.list_case_messages("channel-1", "case-1")] == ["post-1"]
+
+
+def test_creates_room_when_channel_id_is_not_configured():
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append({"method": request.method, "path": request.url.path, "body": json.loads(request.content)})
+        return httpx.Response(201, json={"id": "channel-created", "team_id": "team-1", "display_name": "Bursar Control Room", "purpose": "Invoice review"})
+
+    settings = configuration().model_copy(update={"channel_id": None})
+    adapter = MattermostSwitchAdapter(settings, httpx.Client(transport=httpx.MockTransport(handler)))
+    room = adapter.create_room("Bursar Control Room", "Invoice review")
+
+    assert room.room_id == "channel-created"
+    assert requests[0]["path"] == "/api/v4/channels"
+    assert requests[0]["body"]["team_id"] == "team-1"
+
+
+def test_rejects_different_room_and_agent_command():
+    adapter = MattermostSwitchAdapter(configuration(), httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"id": "channel-1", "team_id": "team-1", "display_name": "Bursar"}))))
+    adapter.create_room("bursar")
+    with pytest.raises(ValueError, match="different configured room"):
+        adapter.post_message(message().model_copy(update={"room_id": "other-channel"}))
+    with pytest.raises(PermissionError, match="agent"):
+        adapter.parse_human_command("approve case-1", "agent-1", "agent")
+    assert adapter.parse_human_command("/approve case-1", "finance-1").action == "approve"
+
+
+def test_timeout_is_bounded_and_safe():
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    adapter = MattermostSwitchAdapter(configuration(), httpx.Client(transport=httpx.MockTransport(handler)), max_retries=2)
+    with pytest.raises(SwitchTransportError, match="timed out"):
+        adapter.create_room("bursar")
+    assert calls == 3
+
+
+def test_unauthorized_response_is_not_retried():
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(401, json={"message": "secret details"})
+
+    adapter = MattermostSwitchAdapter(configuration(), httpx.Client(transport=httpx.MockTransport(handler)), max_retries=2)
+    with pytest.raises(SwitchUnauthorizedError, match="authorization"):
+        adapter.create_room("bursar")
+    assert calls == 1
+
+
+def test_provider_error_retries_then_fails():
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503, json={"message": "provider details"})
+
+    adapter = MattermostSwitchAdapter(configuration(), httpx.Client(transport=httpx.MockTransport(handler)), max_retries=2)
+    with pytest.raises(SwitchProviderError, match="HTTP 503"):
+        adapter.create_room("bursar")
+    assert calls == 3
+
+
+def test_malformed_provider_response_is_rejected():
+    adapter = MattermostSwitchAdapter(configuration(), httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"id": "channel-1"}))))
+    with pytest.raises(SwitchMalformedResponseError, match="display_name"):
+        adapter.create_room("bursar")
+
+
+def test_malformed_posts_response_is_rejected():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/posts"):
+            return httpx.Response(200, json={"posts": {}})
+        return httpx.Response(200, json={"id": "channel-1", "team_id": "team-1", "display_name": "Bursar"})
+
+    adapter = MattermostSwitchAdapter(configuration(), httpx.Client(transport=httpx.MockTransport(handler)))
+    adapter.create_room("bursar")
+    with pytest.raises(SwitchMalformedResponseError, match="posts/order"):
+        adapter.list_case_messages("channel-1", "case-1")

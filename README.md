@@ -71,6 +71,32 @@ simulated ledger result. The in-memory timeline is append-only and can be
 queried by case ID; events from another case are never included. A ledger
 result is printed only for human approval or a reasoned human override.
 
+### External Switch/Mattermost transport
+
+The `MattermostSwitchAdapter` is an optional HTTP transport behind the same
+`SwitchAdapter` protocol. It uses the documented Mattermost REST v4 channel and
+post endpoints; local tests and offline demos continue to use
+`LocalFixtureSwitchAdapter`.
+
+Configure a live room with environment variables (copy `.env.example` and
+load it using your deployment's secret manager):
+
+```text
+SWITCH_BASE_URL=https://mattermost.example.com
+SWITCH_TOKEN=<personal-access-token-or-bot-token>
+SWITCH_TEAM_ID=<mattermost-team-id>
+SWITCH_CHANNEL_ID=<existing-bursar-channel-id>
+SWITCH_TIMEOUT_SECONDS=10
+```
+
+Live setup path: create a Mattermost bot or personal access token with access
+to the Bursar team/channel, obtain the team and channel IDs from Mattermost,
+set the variables above, then construct `MattermostSwitchAdapter` from
+`SwitchConfiguration.from_env()`. If `SWITCH_CHANNEL_ID` is omitted, the
+adapter uses the documented channel-create endpoint and resolves the returned
+channel. No live credentials are required for the test suite. The adapter
+does not connect the legacy graph or add model calls.
+
 ## Features
 
 - FastAPI service for run creation, lookup, approval, rejection, and audit lookup.

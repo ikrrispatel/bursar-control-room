@@ -57,6 +57,7 @@ class SwitchRoom(BaseModel):
     room_id: str = Field(default_factory=lambda: f"room-{uuid4()}", min_length=1)
     name: str = Field(min_length=1)
     purpose: str = ""
+    team_id: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
 

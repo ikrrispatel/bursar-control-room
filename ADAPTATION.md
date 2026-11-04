@@ -68,6 +68,28 @@ expected duplicate, matching, case, and ledger outcomes. This remains local
 fixture behavior; it does not add the external Switch API, model calls,
 SQLite, dashboard, or a rewrite of the legacy graph.
 
+## External transport boundary
+
+The optional `MattermostSwitchAdapter` now implements the same protocol using
+only documented Mattermost REST v4 operations: channel lookup or creation,
+post creation, and channel post retrieval. `SwitchConfiguration` reads
+`SWITCH_BASE_URL`, `SWITCH_TOKEN`, `SWITCH_TEAM_ID`, optional
+`SWITCH_CHANNEL_ID`, and `SWITCH_TIMEOUT_SECONDS` from the environment. Tokens
+are represented as secret values and are never logged.
+
+Messages are serialized as a typed Bursar JSON envelope inside Mattermost's
+documented post `message` field. The adapter validates case correlation,
+message types, sender boundaries, configured room identity, bounded retries,
+timeouts, and provider response shapes. Human command parsing remains the
+same allowlist as the local adapter. Contract tests use an injected fake HTTP
+transport and do not require live credentials.
+
+The repository did not contain a Switch-specific API contract. Therefore this
+slice targets the official Mattermost REST v4 contract and deliberately does
+not invent Switch-specific endpoints or event/webhook behavior. A future live
+Switch integration should confirm whether Switch adds a separate gateway
+contract before extending this adapter.
+
 ## Modules to modify later
 
 The API, LangGraph workflow, audit persistence, and demo flow will later be
