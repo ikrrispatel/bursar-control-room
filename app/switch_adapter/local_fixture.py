@@ -4,6 +4,7 @@ import re
 
 from app.switch_adapter.models import (
     HumanCommand,
+    SenderType,
     SwitchMessage,
     SwitchRoom,
 )
@@ -47,7 +48,9 @@ class LocalFixtureSwitchAdapter:
             if message.room_id == room_id and message.case.case_id == case_id
         ]
 
-    def parse_human_command(self, command: str, actor_id: str) -> HumanCommand:
+    def parse_human_command(self, command: str, actor_id: str, actor_type: str = "human") -> HumanCommand:
+        if actor_type != SenderType.HUMAN:
+            raise PermissionError("agent commands cannot create human decisions")
         if not actor_id.strip():
             raise ValueError("human command requires an actor identity")
         match = COMMAND_RE.fullmatch(command.strip())

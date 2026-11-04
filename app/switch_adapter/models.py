@@ -23,6 +23,7 @@ class AgentRole(StrEnum):
 
 
 class MessageType(StrEnum):
+    INVOICE_INTAKE = "invoice_intake"
     INTAKE_ACKNOWLEDGEMENT = "intake_acknowledgement"
     EXTRACTION_FINDING = "extraction_finding"
     DUPLICATE_FINDING = "duplicate_finding"
@@ -31,6 +32,7 @@ class MessageType(StrEnum):
     RISK_SUMMARY = "risk_summary"
     HUMAN_DECISION_REQUEST = "human_decision_request"
     HUMAN_DECISION_RECORDED = "human_decision_recorded"
+    LEDGER_RESULT = "ledger_result"
 
 
 class SenderType(StrEnum):
@@ -100,6 +102,7 @@ class HumanCommand(BaseModel):
     action: Literal["approve", "reject", "request_clarification", "override"]
     case_id: str = Field(min_length=1)
     actor_id: str = Field(min_length=1)
+    actor_type: Literal["human"] = "human"
     reason: str | None = None
 
     @model_validator(mode="after")

@@ -43,6 +43,15 @@ storage and allowlisted human-command parsing for tests. It intentionally has
 no external Switch/Mattermost client, model calls, dashboard coupling, or
 LangGraph dependency.
 
+`app/bursar/workflow.py` now coordinates that fixture adapter with the Bursar
+case and decision domain. It validates structured invoice intake, runs
+deterministic fixture checks, publishes typed findings and a human decision
+request, routes commands through the adapter parser and decision service, and
+creates a simulated ledger entry only after human approval or override. Reject
+and clarification paths never create ledger entries. The coordinator stores
+cases, messages, audit events, and ledger entries in memory and remains
+independent of the legacy LangGraph workflow.
+
 ## Modules to modify later
 
 The API, LangGraph workflow, audit persistence, and demo flow will later be

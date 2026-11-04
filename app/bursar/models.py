@@ -73,6 +73,8 @@ class BursarCase(BaseModel):
     case_id: str = Field(min_length=1)
     status: CaseStatus = CaseStatus.PENDING_REVIEW
     requester_id: str = Field(min_length=1)
+    room_id: str | None = None
+    intake_message_id: str | None = None
     finance_reviewer_id: str | None = None
     vendor_name: str | None = None
     invoice_number: str | None = None

@@ -19,5 +19,5 @@ class SwitchAdapter(Protocol):
     def list_case_messages(self, room_id: str, case_id: str) -> list[SwitchMessage]:
         ...
 
-    def parse_human_command(self, command: str, actor_id: str) -> HumanCommand:
+    def parse_human_command(self, command: str, actor_id: str, actor_type: str = "human") -> HumanCommand:
         ...
