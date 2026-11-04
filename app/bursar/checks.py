@@ -18,6 +18,7 @@ class InvoiceIntake(BaseModel):
     currency: str = Field(min_length=1)
     evidence: list[EvidenceReference] = Field(default_factory=list)
     duplicate_of: str | None = None
+    duplicate_case_id: str | None = None
     missing_evidence: list[str] = Field(default_factory=list)
     conflicting_evidence: list[str] = Field(default_factory=list)
     policy_warning: str | None = None
@@ -49,14 +50,17 @@ def run_fixture_checks(intake: InvoiceIntake) -> FixtureCheckResult:
         status="complete",
         explanation=f"Extracted {intake.vendor_name} invoice {intake.invoice_number} for {intake.total} {intake.currency}.",
     )
+    duplicate_explanation = (
+        f"Matches prior invoice {intake.duplicate_of} in case {intake.duplicate_case_id}."
+        if intake.duplicate_of and intake.duplicate_case_id
+        else f"Matches prior invoice {intake.duplicate_of}."
+        if intake.duplicate_of
+        else "No duplicate invoice was identified in the fixture set."
+    )
     duplicate = FixtureFinding(
         finding_type="duplicate",
         status="duplicate" if intake.duplicate_of else "clear",
-        explanation=(
-            f"Matches prior invoice {intake.duplicate_of}."
-            if intake.duplicate_of
-            else "No duplicate invoice was identified in the fixture set."
-        ),
+        explanation=duplicate_explanation,
     )
     evidence = FixtureFinding(
         finding_type="evidence",

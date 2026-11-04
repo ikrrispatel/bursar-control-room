@@ -52,6 +52,22 @@ and clarification paths never create ledger entries. The coordinator stores
 cases, messages, audit events, and ledger entries in memory and remains
 independent of the legacy LangGraph workflow.
 
+The reproducible fixture layer in `app/bursar/scenarios.py` supplies five
+typed cases: clean invoice, duplicate invoice, missing evidence, conflicting
+evidence, and human override. It calls the existing duplicate and
+invoice/PO/delivery matching services rather than replacing them with filename
+or string heuristics. `app/bursar/evidence.py` hashes fixture files with
+SHA-256 and creates case-scoped evidence references.
+
+`app/bursar/passport.py` aggregates the extracted invoice fields, evidence,
+check results, agent findings, human decision, audit events, and simulated
+ledger result into an `EvidencePassport`. `app/bursar/timeline.py` provides an
+append-only, ordered, case-filtered timeline. The local command
+`scripts/run_bursar_scenarios.py` executes all five scenarios and verifies the
+expected duplicate, matching, case, and ledger outcomes. This remains local
+fixture behavior; it does not add the external Switch API, model calls,
+SQLite, dashboard, or a rewrite of the legacy graph.
+
 ## Modules to modify later
 
 The API, LangGraph workflow, audit persistence, and demo flow will later be

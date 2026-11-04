@@ -4,7 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.bursar.checks import FixtureCheckResult, InvoiceIntake, run_fixture_checks
 from app.bursar.decisions import apply_human_decision, create_simulated_ledger_entry
-from app.bursar.models import AuditEvent, BursarCase, CaseStatus, HumanDecision, SimulatedLedgerEntry, utc_now
+from app.bursar.models import AgentFinding, AuditEvent, BursarCase, CaseStatus, EvidenceReference, HumanDecision, SimulatedLedgerEntry, utc_now
+from app.bursar.passport import EvidencePassport
+from app.bursar.timeline import CaseTimelineService
 from app.switch_adapter import (
     AgentRole,
     CaseCorrelation,
@@ -71,6 +73,7 @@ class BursarWorkflowResult(BaseModel):
     messages: list[SwitchMessage]
     audit_events: list[AuditEvent] = Field(default_factory=list)
     ledger_entry: SimulatedLedgerEntry | None = None
+    evidence_passport: EvidencePassport
 
 
 class LocalBursarWorkflowCoordinator:
@@ -83,6 +86,8 @@ class LocalBursarWorkflowCoordinator:
         self.messages: dict[str, list[SwitchMessage]] = {}
         self.audit_events: dict[str, list[AuditEvent]] = {}
         self.ledger_entries: dict[str, SimulatedLedgerEntry] = {}
+        self.passports: dict[str, EvidencePassport] = {}
+        self.timeline = CaseTimelineService()
 
     def start_case(self, intake_message: SwitchMessage) -> BursarWorkflowResult:
         if intake_message.message_type != MessageType.INVOICE_INTAKE:
@@ -99,6 +104,8 @@ class LocalBursarWorkflowCoordinator:
             raise ValueError(f"case already exists: {case_id}")
 
         intake = InvoiceIntake.model_validate(intake_message.payload)
+        if any(reference.case_id != case_id for reference in intake.evidence):
+            raise ValueError("evidence reference belongs to another case")
         checks = run_fixture_checks(intake)
         case = BursarCase(
             case_id=case_id,
@@ -114,9 +121,28 @@ class LocalBursarWorkflowCoordinator:
         self.cases[case_id] = case
         self.checks[case_id] = checks
         self.audit_events[case_id] = []
+        self.timeline.append(case_id, "case_created", intake_message.sender_id, {"intake_message_id": intake_message.message_id})
         posted = [self._post_ack(case), *self._post_findings(case, checks), self._post_decision_request(case, checks, intake)]
         self.messages[case_id] = posted
-        return BursarWorkflowResult(case=case, checks=checks, messages=posted)
+        for message in posted:
+            self.timeline.append(case_id, "message_posted", message.sender_id, {"message_id": message.message_id, "message_type": message.message_type.value})
+        passport = self._build_passport(case, intake, checks)
+        self.passports[case_id] = passport
+        return BursarWorkflowResult(case=case, checks=checks, messages=posted, evidence_passport=passport)
+
+    def run_scenario(self, fixture):
+        from app.bursar.scenarios import evaluate_scenario
+
+        room = self.adapter.create_room(f"bursar-{fixture.name}")
+        evaluation = evaluate_scenario(fixture, room.room_id)
+        self.adapter.post_message(evaluation.intake_message)
+        initial = self.start_case(evaluation.intake_message)
+        if initial.case.status.value != fixture.expected.case_status:
+            raise AssertionError(f"scenario case status mismatch: {fixture.name}")
+        command = evaluation.fixture.expected.decision_action + " " + evaluation.fixture.case_id
+        if evaluation.fixture.expected.decision_reason:
+            command += " " + evaluation.fixture.expected.decision_reason
+        return self.decide(command, "finance-fixture"), evaluation
 
     def decide(self, command: str, actor_id: str, actor_type: str = "human") -> BursarWorkflowResult:
         parsed = self.adapter.parse_human_command(command, actor_id, actor_type)
@@ -134,19 +160,27 @@ class LocalBursarWorkflowCoordinator:
         updated_case, event = apply_human_decision(case, decision)
         self.cases[case.case_id] = updated_case
         self.audit_events[case.case_id].append(event)
+        self.timeline.append(case.case_id, "human_decision", event.actor_id, event.payload)
         recorded = self._post_decision_recorded(updated_case, decision)
         self.messages[case.case_id].append(recorded)
+        self.timeline.append(case.case_id, "message_posted", recorded.sender_id, {"message_id": recorded.message_id, "message_type": recorded.message_type.value})
         ledger_entry = None
         if parsed.action in {"approve", "override"}:
             ledger_entry = create_simulated_ledger_entry(updated_case, self.audit_events[case.case_id])
             self.ledger_entries[case.case_id] = ledger_entry
-            self.messages[case.case_id].append(self._post_ledger_result(updated_case, ledger_entry))
+            ledger_message = self._post_ledger_result(updated_case, ledger_entry)
+            self.messages[case.case_id].append(ledger_message)
+            self.timeline.append(case.case_id, "ledger_created", ledger_entry.approved_by, {"entry_id": ledger_entry.entry_id})
+            self.timeline.append(case.case_id, "message_posted", ledger_message.sender_id, {"message_id": ledger_message.message_id, "message_type": ledger_message.message_type.value})
+        passport = self._build_passport(updated_case, None, self.checks[case.case_id], decision, ledger_entry)
+        self.passports[case.case_id] = passport
         return BursarWorkflowResult(
             case=updated_case,
             checks=self.checks[case.case_id],
             messages=list(self.messages[case.case_id]),
             audit_events=list(self.audit_events[case.case_id]),
             ledger_entry=ledger_entry,
+            evidence_passport=passport,
         )
 
     def list_case_messages(self, case_id: str) -> list[SwitchMessage]:
@@ -154,6 +188,42 @@ class LocalBursarWorkflowCoordinator:
         if case is None or case.room_id is None:
             raise ValueError(f"unknown case: {case_id}")
         return self.adapter.list_case_messages(case.room_id, case_id)
+
+    def timeline_for_case(self, case_id: str):
+        return self.timeline.for_case(case_id)
+
+    def _build_passport(
+        self,
+        case: BursarCase,
+        intake: InvoiceIntake | None,
+        checks: FixtureCheckResult,
+        decision: HumanDecision | None = None,
+        ledger_entry: SimulatedLedgerEntry | None = None,
+    ) -> EvidencePassport:
+        previous = self.passports.get(case.case_id)
+        references = intake.evidence if intake is not None else (previous.evidence_references if previous else [])
+        findings = [
+            AgentFinding(
+                finding_id=f"{case.case_id}-{finding.finding_type}",
+                agent_name=finding.finding_type,
+                finding_type=finding.finding_type,
+                status=finding.status,
+                explanation=finding.explanation,
+                confidence=1.0,
+                evidence=references,
+            )
+            for finding in [checks.extraction, checks.duplicate, checks.evidence, checks.policy, checks.risk]
+        ]
+        return EvidencePassport(
+            case_id=case.case_id,
+            extracted_invoice_fields={"vendor_name": case.vendor_name, "invoice_number": case.invoice_number, "total": case.total, "currency": case.currency},
+            evidence_references=references,
+            check_results=checks.model_dump(mode="json"),
+            agent_findings=findings,
+            human_decision=decision or (previous.human_decision if previous else None),
+            audit_events=list(self.audit_events.get(case.case_id, [])),
+            simulated_ledger_result=ledger_entry or (previous.simulated_ledger_result if previous else None),
+        )
 
     def _post(self, message: SwitchMessage) -> SwitchMessage:
         return self.adapter.post_message(message)

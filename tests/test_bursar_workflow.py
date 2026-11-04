@@ -19,7 +19,7 @@ def make_intake(room_id: str, case_id: str, **overrides):
         "invoice_number": f"INV-{case_id[-3:]}",
         "total": "125.50",
         "currency": "USD",
-        "evidence": [EVIDENCE],
+        "evidence": [{**EVIDENCE, "case_id": case_id}],
         **overrides,
     }
     return SwitchMessage(

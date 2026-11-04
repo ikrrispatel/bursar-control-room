@@ -33,10 +33,12 @@ class EvidenceReference(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     evidence_id: str = Field(min_length=1)
+    case_id: str = Field(min_length=1)
     kind: str = Field(min_length=1)
     file_name: str = Field(min_length=1)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_location: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class AgentFinding(BaseModel):

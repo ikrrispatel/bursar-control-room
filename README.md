@@ -53,6 +53,24 @@ The existing AP workflow remains the reusable foundation during this staged
 adaptation. Switch/Mattermost integration and the companion inspection UI are
 separate later slices; this domain package does not claim to implement them.
 
+### Reproducible local scenarios
+
+The local Bursar coordinator includes five deterministic fixtures:
+`clean_invoice`, `duplicate_invoice`, `missing_evidence`,
+`conflicting_evidence`, and `human_override`. Each reuses the typed invoice,
+purchase-order, delivery-note, duplicate, and matching controls from the AP
+foundation. Run all five with:
+
+```bash
+.venv/bin/python scripts/run_bursar_scenarios.py
+```
+
+Each case builds an evidence passport containing extracted fields, SHA-256
+evidence references, check results, findings, decisions, audit events, and any
+simulated ledger result. The in-memory timeline is append-only and can be
+queried by case ID; events from another case are never included. A ledger
+result is printed only for human approval or a reasoned human override.
+
 ## Features
 
 - FastAPI service for run creation, lookup, approval, rejection, and audit lookup.
