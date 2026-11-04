@@ -16,7 +16,7 @@ from app.switch_adapter.models import (
     SwitchMessage,
     SwitchRoom,
 )
-from app.switch_adapter.config import SwitchConfiguration
+from app.switch_adapter.config import MattermostRelayConfiguration, SwitchConfiguration
 
 
 LOGGER = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class MattermostSwitchAdapter:
 
     def __init__(
         self,
-        configuration: SwitchConfiguration | None = None,
+        configuration: SwitchConfiguration | MattermostRelayConfiguration | None = None,
         client: httpx.Client | None = None,
         max_retries: int = 2,
     ) -> None:
@@ -62,12 +62,15 @@ class MattermostSwitchAdapter:
             self._client.close()
 
     def create_room(self, name: str, purpose: str = "") -> SwitchRoom:
+        team_id = getattr(self.configuration, "team_id", None)
         if self.configuration.channel_id:
             room = self._get_room(self.configuration.channel_id)
         else:
+            if not team_id:
+                raise ValueError("SWITCH_TEAM_ID is required when creating a Mattermost room")
             channel_name = self._channel_name(name)
             payload = {
-                "team_id": self.configuration.team_id,
+                "team_id": team_id,
                 "name": channel_name,
                 "display_name": name.strip(),
                 "purpose": purpose,
@@ -77,7 +80,7 @@ class MattermostSwitchAdapter:
             room = self._room_from_provider(response)
         if room.room_id != self.configuration.channel_id and self.configuration.channel_id:
             raise SwitchProviderError("provider returned a different configured channel")
-        if room.team_id != self.configuration.team_id:
+        if team_id and room.team_id != team_id:
             raise SwitchProviderError("configured channel belongs to a different team")
         self._resolved_room = room
         return room
@@ -98,12 +101,7 @@ class MattermostSwitchAdapter:
 
     def list_case_messages(self, room_id: str, case_id: str) -> list[SwitchMessage]:
         self._assert_room(room_id)
-        response = self._request(
-            "GET",
-            f"/api/v4/channels/{room_id}/posts",
-            params={"per_page": 200},
-        )
-        posts = self._posts_from_provider(response)
+        posts = self.list_room_posts(room_id)
         messages: list[SwitchMessage] = []
         for post in posts:
             if self._required_string(post, "channel_id") != room_id:
@@ -121,6 +119,20 @@ class MattermostSwitchAdapter:
             if message.room_id == room_id and message.case.case_id == case_id:
                 messages.append(message)
         return messages
+
+    def list_room_posts(self, room_id: str) -> list[dict[str, Any]]:
+        """Return raw posts for the configured relay room.
+
+        Parsing and authorization stay in the Bursar relay; the adapter only
+        validates the provider response and configured room identity.
+        """
+        self._assert_room(room_id)
+        response = self._request(
+            "GET",
+            f"/api/v4/channels/{room_id}/posts",
+            params={"per_page": 200},
+        )
+        return self._posts_from_provider(response)
 
     def parse_human_command(self, command: str, actor_id: str, actor_type: str = "human") -> HumanCommand:
         if actor_type != SenderType.HUMAN:

@@ -1,7 +1,7 @@
 """Switch room/message boundary with a deterministic local fixture adapter."""
 
 from app.switch_adapter.local_fixture import LocalFixtureSwitchAdapter
-from app.switch_adapter.config import SwitchConfiguration
+from app.switch_adapter.config import MattermostRelayConfiguration, SwitchConfiguration
 from app.switch_adapter.http import (
     MattermostSwitchAdapter,
     SwitchMalformedResponseError,
@@ -27,6 +27,7 @@ __all__ = [
     "LocalFixtureSwitchAdapter",
     "MattermostSwitchAdapter",
     "SwitchConfiguration",
+    "MattermostRelayConfiguration",
     "SwitchTransportError",
     "SwitchUnauthorizedError",
     "SwitchProviderError",
