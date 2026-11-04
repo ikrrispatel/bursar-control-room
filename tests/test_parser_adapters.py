@@ -21,6 +21,7 @@ def test_liteparse_adapter_returns_parsed_document(tmp_path: Path) -> None:
     }
 
     def fake_run(cmd: list[str], check: bool) -> None:
+        assert cmd[:3] == [sys.executable, "-m", "liteparse.cli"]
         output_path = Path(cmd[-1])
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(__import__("json").dumps(fake_output), encoding="utf-8")

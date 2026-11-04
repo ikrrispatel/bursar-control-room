@@ -31,6 +31,11 @@ reasons for rejection and override, rejects agent decision attempts, prevents
 decisions after terminal states, and permits a simulated ledger entry only
 after a recorded human approval or human override event.
 
+The base parser's LiteParse adapter invokes the installed module through the
+active Python interpreter (`python -m liteparse.cli`) rather than assuming a
+shell-global `lit` executable. This keeps the documented local virtualenv and
+`uv run` paths deterministic.
+
 ## Modules to modify later
 
 The API, LangGraph workflow, audit persistence, and demo flow will later be

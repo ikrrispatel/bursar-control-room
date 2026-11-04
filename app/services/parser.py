@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
@@ -41,7 +42,9 @@ class LiteParseAdapter(ParserAdapter):
 
         subprocess.run(
             [
-                "lit",
+                sys.executable,
+                "-m",
+                "liteparse.cli",
                 "parse",
                 str(file_path),
                 "--format",
