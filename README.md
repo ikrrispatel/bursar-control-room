@@ -115,6 +115,22 @@ are absent and supports `--offline` for the local fixture transport:
 .venv/bin/python scripts/run_bursar_live_demo.py --offline --scenario duplicate_invoice
 ```
 
+## Bursar inspection dashboard
+
+Start the read-only Bursar inspection surface:
+
+```bash
+.venv/bin/python -m streamlit run app/ui/bursar_dashboard.py
+```
+
+It displays deterministic local fixture cases, status chips, case details,
+evidence passports, grouped findings, timelines, human decisions, and
+simulated ledger results. It has no approval or mutation controls. Mattermost/
+Switch remains the primary workflow surface for intake, collaboration, agent
+findings, and human decisions. Read-only API projections are available at
+`GET /bursar/cases`, `GET /bursar/cases/{case_id}`, and the case's
+`/passport`, `/timeline`, `/findings`, `/decision`, and `/ledger` subroutes.
+
 ### Safe extraction agent boundary
 
 The optional `intake_extraction_agent` accepts only bounded invoice text and
@@ -205,7 +221,7 @@ uv run python scripts/run_demo.py \
   --output-md data/processed/reports/latest-demo.md
 ```
 
-## Review UI
+## Legacy AP review UI
 
 Start the local Streamlit review app:
 

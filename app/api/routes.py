@@ -7,6 +7,17 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from langgraph.types import Command
 
 from app.graph.workflow import build_graph
+from app.bursar.inspection import (
+    BursarInspectionService,
+    CaseDetail,
+    CaseListResponse,
+    DecisionResponse,
+    EvidencePassportResponse,
+    FindingsResponse,
+    LedgerResponse,
+    TimelineResponse,
+)
+from app.bursar.workflow import LocalBursarWorkflowCoordinator
 from app.switch_adapter import SwitchMessage
 from app.switch_adapter.boundary import LiveMattermostBursarBoundary, SwitchCommandRequest
 
@@ -15,11 +26,65 @@ router = APIRouter()
 RUNS: dict[str, dict] = {}
 RUN_GRAPHS: dict[str, object] = {}
 LIVE_BURSAR_BOUNDARY: LiveMattermostBursarBoundary | None = None
+BURSAR_COORDINATOR = LocalBursarWorkflowCoordinator()
 
 
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@router.get("/bursar/cases", response_model=CaseListResponse)
+def list_bursar_cases() -> CaseListResponse:
+    return _inspection().list_cases()
+
+
+@router.get("/bursar/cases/{case_id}", response_model=CaseDetail)
+def get_bursar_case(case_id: str) -> CaseDetail:
+    try:
+        return _inspection().case_detail(case_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Bursar case not found") from exc
+
+
+@router.get("/bursar/cases/{case_id}/passport", response_model=EvidencePassportResponse)
+def get_bursar_passport(case_id: str) -> EvidencePassportResponse:
+    try:
+        return EvidencePassportResponse(passport=_inspection().evidence_passport(case_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Bursar case not found") from exc
+
+
+@router.get("/bursar/cases/{case_id}/timeline", response_model=TimelineResponse)
+def get_bursar_timeline(case_id: str) -> TimelineResponse:
+    try:
+        return TimelineResponse(events=_inspection().timeline(case_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Bursar case not found") from exc
+
+
+@router.get("/bursar/cases/{case_id}/findings", response_model=FindingsResponse)
+def get_bursar_findings(case_id: str) -> FindingsResponse:
+    try:
+        return _inspection().findings(case_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Bursar case not found") from exc
+
+
+@router.get("/bursar/cases/{case_id}/decision", response_model=DecisionResponse)
+def get_bursar_decision(case_id: str) -> DecisionResponse:
+    try:
+        return _inspection().decision(case_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Bursar case not found") from exc
+
+
+@router.get("/bursar/cases/{case_id}/ledger", response_model=LedgerResponse)
+def get_bursar_ledger(case_id: str) -> LedgerResponse:
+    try:
+        return _inspection().ledger(case_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Bursar case not found") from exc
 
 
 @router.post("/switch/messages")
@@ -148,10 +213,11 @@ def _resume_run(run_id: str, approval: dict) -> dict:
 
 
 def _live_boundary() -> LiveMattermostBursarBoundary:
-    global LIVE_BURSAR_BOUNDARY
+    global LIVE_BURSAR_BOUNDARY, BURSAR_COORDINATOR
     if LIVE_BURSAR_BOUNDARY is None:
         try:
             LIVE_BURSAR_BOUNDARY = LiveMattermostBursarBoundary.from_environment()
+            BURSAR_COORDINATOR = LIVE_BURSAR_BOUNDARY.coordinator
         except ValueError as exc:
             raise HTTPException(
                 status_code=503,
@@ -162,5 +228,19 @@ def _live_boundary() -> LiveMattermostBursarBoundary:
 
 def configure_live_boundary(boundary: LiveMattermostBursarBoundary | None) -> None:
     """Inject a boundary for tests or replace the process-local live boundary."""
-    global LIVE_BURSAR_BOUNDARY
+    global LIVE_BURSAR_BOUNDARY, BURSAR_COORDINATOR
     LIVE_BURSAR_BOUNDARY = boundary
+    if boundary is not None:
+        BURSAR_COORDINATOR = boundary.coordinator
+    else:
+        BURSAR_COORDINATOR = LocalBursarWorkflowCoordinator()
+
+
+def configure_bursar_coordinator(coordinator: LocalBursarWorkflowCoordinator) -> None:
+    """Inject the in-memory coordinator for read-only query tests or hosting."""
+    global BURSAR_COORDINATOR
+    BURSAR_COORDINATOR = coordinator
+
+
+def _inspection() -> BursarInspectionService:
+    return BursarInspectionService(BURSAR_COORDINATOR)

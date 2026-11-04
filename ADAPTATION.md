@@ -66,7 +66,7 @@ append-only, ordered, case-filtered timeline. The local command
 `scripts/run_bursar_scenarios.py` executes all five scenarios and verifies the
 expected duplicate, matching, case, and ledger outcomes. This remains local
 fixture behavior; it does not add the external Switch API, model calls,
-SQLite, dashboard, or a rewrite of the legacy graph.
+SQLite, or a rewrite of the legacy graph.
 
 ## External transport boundary
 
@@ -116,12 +116,32 @@ for a reviewer. It cannot perform duplicate detection, matching, policy or
 risk decisions, human decisions, or ledger creation. Those deterministic
 services and the human decision gate remain the final authority.
 
+## Inspection surface
+
+`app/bursar/inspection.py` provides read-only projections for case lists, case
+details, evidence passports, timelines, agent findings, human decisions, and
+simulated ledger results. The corresponding `GET /bursar/cases...` endpoints
+never call the decision service and expose no mutation operation.
+`app/ui/bursar_dashboard.py` is a small Streamlit inspection surface with
+status chips, empty/missing-case handling, escaped untrusted text, grouped
+agent findings, passport evidence, timeline events, and decision/ledger
+display. Start it with:
+
+```bash
+.venv/bin/python -m streamlit run app/ui/bursar_dashboard.py
+```
+
+The dashboard is intentionally secondary. Mattermost/Switch remains the
+required product surface for invoice intake, agent collaboration, and the
+human decision gate; the dashboard cannot approve, reject, override, request
+clarification, or create ledger entries.
+
 ## Modules to modify later
 
 The API, LangGraph workflow, audit persistence, and demo flow will later be
 adapted to correlate cases and evidence with a dedicated Switch/Mattermost
-room. The existing Streamlit UI will remain a companion inspection surface,
-not the primary workflow.
+room. The existing legacy Streamlit AP review UI remains separate from the
+Bursar inspection surface and is not the primary workflow.
 
 ## Disabled or out of scope for the Bursar MVP
 
