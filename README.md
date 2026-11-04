@@ -141,6 +141,29 @@ created and migrated on startup. Remove the configured database file to reset
 local state; do not put credentials, prompts, or secrets in it. If neither
 variable is set, the coordinator remains in-memory for isolated offline tests.
 
+### Docker Compose
+
+Docker Compose runs the API and read-only inspection dashboard locally, sharing
+the named `bursar_control_room_data` volume for SQLite:
+
+```bash
+cp .env.example .env  # optional; leave Switch/model values blank for offline mode
+docker compose up --build
+```
+
+The API is available at `http://localhost:8000` and the dashboard at
+`http://localhost:8501`. Switch/Mattermost remains external and is configured
+only through runtime environment variables. Offline verification runs without
+credentials:
+
+```bash
+docker compose run --rm api python scripts/run_bursar_scenarios.py
+```
+
+Stop with `docker compose down`. Reset only the SQLite volume with
+`docker compose down -v`; this removes container data but never deletes source
+files. Restart with `docker compose up --build`.
+
 ### Safe extraction agent boundary
 
 The optional `intake_extraction_agent` accepts only bounded invoice text and

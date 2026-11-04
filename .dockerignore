@@ -1,0 +1,28 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Local runtime state and generated files
+data
+*.db
+*.sqlite
+*.sqlite3
+*.log
+logs
+uploads
+outputs
+
+# Local secrets and environment files; keep the safe template.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt

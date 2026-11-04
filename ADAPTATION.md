@@ -149,6 +149,31 @@ The schema is initialized on repository construction. Delete the configured
 database file to reset local state. Omitting both variables preserves the
 in-memory fixture mode used by focused tests and offline demos.
 
+## Docker Compose runtime
+
+`Dockerfile` packages the application as a non-root Python 3.12 image.
+`docker-compose.yml` provides an API service and the read-only Streamlit
+inspection service. Both mount the named `bursar_control_room_data` volume at
+`/data` and use `/data/bursar.db`; the dashboard remains an inspection surface
+and has no mutation controls. Mattermost/Switch and model credentials are
+passed only through runtime environment variables.
+
+Start locally with:
+
+```bash
+docker compose up --build
+```
+
+Run the deterministic five-scenario check without external credentials:
+
+```bash
+docker compose run --rm api python scripts/run_bursar_scenarios.py
+```
+
+Stop with `docker compose down`. Reset the SQLite volume with
+`docker compose down -v`; this affects only the named Docker volume, not the
+source checkout. `docker compose config` validates the resolved Compose file.
+
 ## Modules to modify later
 
 The legacy LangGraph workflow and legacy Streamlit AP review UI remain

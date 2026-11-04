@@ -6,6 +6,7 @@ import json
 import streamlit as st
 
 from app.bursar.inspection import BursarInspectionService, STATUS_LABELS
+from app.bursar.repository import BursarRepository
 from app.bursar.scenarios import load_scenarios
 from app.bursar.workflow import LocalBursarWorkflowCoordinator
 from app.agents import FixtureAgentProvider
@@ -23,10 +24,16 @@ def status_chip_html(status: str) -> str:
 
 @st.cache_resource
 def load_fixture_inspection() -> BursarInspectionService:
+    repository = BursarRepository.from_environment_optional()
     adapter = LocalFixtureSwitchAdapter()
-    coordinator = LocalBursarWorkflowCoordinator(adapter, agent_provider=FixtureAgentProvider())
-    for fixture in load_scenarios():
-        coordinator.run_scenario(fixture)
+    coordinator = LocalBursarWorkflowCoordinator(
+        adapter,
+        agent_provider=FixtureAgentProvider(),
+        repository=repository,
+    )
+    if not coordinator.cases:
+        for fixture in load_scenarios():
+            coordinator.run_scenario(fixture)
     return BursarInspectionService(coordinator)
 
 
