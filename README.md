@@ -97,6 +97,24 @@ adapter uses the documented channel-create endpoint and resolves the returned
 channel. No live credentials are required for the test suite. The adapter
 does not connect the legacy graph or add model calls.
 
+The live API boundary exposes:
+
+```text
+POST /switch/messages   # typed invoice-intake message from the Bursar room
+POST /switch/commands   # human command plus room_id and actor_id
+```
+
+Both routes validate the configured channel before invoking the deterministic
+Bursar coordinator. The coordinator posts findings, the decision record, and
+the simulated ledger result back through Mattermost. For a live synthetic demo
+use `scripts/run_bursar_live_demo.py`; it fails clearly when live credentials
+are absent and supports `--offline` for the local fixture transport:
+
+```bash
+.venv/bin/python scripts/run_bursar_live_demo.py --scenario clean_invoice
+.venv/bin/python scripts/run_bursar_live_demo.py --offline --scenario duplicate_invoice
+```
+
 ## Features
 
 - FastAPI service for run creation, lookup, approval, rejection, and audit lookup.

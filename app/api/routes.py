@@ -3,20 +3,45 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from langgraph.types import Command
 
 from app.graph.workflow import build_graph
+from app.switch_adapter import SwitchMessage
+from app.switch_adapter.boundary import LiveMattermostBursarBoundary, SwitchCommandRequest
 
 router = APIRouter()
 
 RUNS: dict[str, dict] = {}
 RUN_GRAPHS: dict[str, object] = {}
+LIVE_BURSAR_BOUNDARY: LiveMattermostBursarBoundary | None = None
 
 
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@router.post("/switch/messages")
+def receive_switch_message(message: SwitchMessage) -> dict:
+    try:
+        result = _live_boundary().receive_message(message)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.model_dump(mode="json")
+
+
+@router.post("/switch/commands")
+def receive_switch_command(request: SwitchCommandRequest) -> dict:
+    try:
+        result = _live_boundary().receive_command(request)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.model_dump(mode="json")
 
 
 @router.post("/runs")
@@ -120,3 +145,22 @@ def _resume_run(run_id: str, approval: dict) -> dict:
         status = "completed"
 
     return {"run_id": run_id, "status": status, "result": result}
+
+
+def _live_boundary() -> LiveMattermostBursarBoundary:
+    global LIVE_BURSAR_BOUNDARY
+    if LIVE_BURSAR_BOUNDARY is None:
+        try:
+            LIVE_BURSAR_BOUNDARY = LiveMattermostBursarBoundary.from_environment()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="live Switch configuration is unavailable; set SWITCH_BASE_URL, SWITCH_TOKEN, SWITCH_TEAM_ID, and SWITCH_CHANNEL_ID",
+            ) from exc
+    return LIVE_BURSAR_BOUNDARY
+
+
+def configure_live_boundary(boundary: LiveMattermostBursarBoundary | None) -> None:
+    """Inject a boundary for tests or replace the process-local live boundary."""
+    global LIVE_BURSAR_BOUNDARY
+    LIVE_BURSAR_BOUNDARY = boundary

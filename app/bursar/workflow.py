@@ -13,6 +13,7 @@ from app.switch_adapter import (
     LocalFixtureSwitchAdapter,
     MessageType,
     SwitchMessage,
+    SwitchAdapter,
 )
 
 
@@ -79,7 +80,7 @@ class BursarWorkflowResult(BaseModel):
 class LocalBursarWorkflowCoordinator:
     """Coordinates deterministic Bursar state with a local Switch adapter."""
 
-    def __init__(self, adapter: LocalFixtureSwitchAdapter | None = None) -> None:
+    def __init__(self, adapter: SwitchAdapter | None = None) -> None:
         self.adapter = adapter or LocalFixtureSwitchAdapter()
         self.cases: dict[str, BursarCase] = {}
         self.checks: dict[str, FixtureCheckResult] = {}
@@ -89,12 +90,12 @@ class LocalBursarWorkflowCoordinator:
         self.passports: dict[str, EvidencePassport] = {}
         self.timeline = CaseTimelineService()
 
-    def start_case(self, intake_message: SwitchMessage) -> BursarWorkflowResult:
+    def start_case(self, intake_message: SwitchMessage, require_posted: bool = True) -> BursarWorkflowResult:
         if intake_message.message_type != MessageType.INVOICE_INTAKE:
             raise ValueError("case intake requires an invoice_intake message")
         if intake_message.sender_type.value == "agent":
             raise PermissionError("agents cannot submit case intake")
-        if not any(
+        if require_posted and not any(
             message.message_id == intake_message.message_id
             for message in self.adapter.list_case_messages(intake_message.room_id, intake_message.case.case_id)
         ):
@@ -135,8 +136,8 @@ class LocalBursarWorkflowCoordinator:
 
         room = self.adapter.create_room(f"bursar-{fixture.name}")
         evaluation = evaluate_scenario(fixture, room.room_id)
-        self.adapter.post_message(evaluation.intake_message)
-        initial = self.start_case(evaluation.intake_message)
+        posted_intake = self.adapter.post_message(evaluation.intake_message)
+        initial = self.start_case(posted_intake)
         if initial.case.status.value != fixture.expected.case_status:
             raise AssertionError(f"scenario case status mismatch: {fixture.name}")
         command = evaluation.fixture.expected.decision_action + " " + evaluation.fixture.case_id

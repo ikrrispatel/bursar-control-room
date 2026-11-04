@@ -90,6 +90,15 @@ not invent Switch-specific endpoints or event/webhook behavior. A future live
 Switch integration should confirm whether Switch adds a separate gateway
 contract before extending this adapter.
 
+`LiveMattermostBursarBoundary` connects the adapter to the Bursar coordinator
+without touching the legacy LangGraph graph. `POST /switch/messages` accepts
+only a typed invoice-intake message from the configured room and starts the
+case. `POST /switch/commands` validates the room and routes the allowlisted
+human command through the existing deterministic decision service. Typed
+findings, human decision records, and ledger results are posted through the
+same Mattermost adapter. The `--offline` mode of
+`scripts/run_bursar_live_demo.py` continues to use `LocalFixtureSwitchAdapter`.
+
 ## Modules to modify later
 
 The API, LangGraph workflow, audit persistence, and demo flow will later be
