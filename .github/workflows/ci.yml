@@ -18,13 +18,22 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: uv sync --locked
 
       - name: Run tests
         run: uv run pytest
+
+      - name: Run offline Bursar scenarios
+        run: uv run python scripts/run_bursar_scenarios.py
+
+      - name: Run security audit
+        run: uv run python scripts/security_audit.py
+
+      - name: Validate Docker and Compose files
+        run: uv run pytest -q tests/test_docker_compose.py
 
       - name: Compile Python files
         run: uv run python -m compileall app tests scripts

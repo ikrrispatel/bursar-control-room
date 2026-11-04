@@ -50,8 +50,8 @@ override require reasons, terminal cases cannot be decided again, and a
 simulated ledger entry requires a recorded human approval or override first.
 
 The existing AP workflow remains the reusable foundation during this staged
-adaptation. Switch/Mattermost integration and the companion inspection UI are
-separate later slices; this domain package does not claim to implement them.
+adaptation. Mattermost/Switch is the primary Bursar workflow surface; the
+companion inspection UI is intentionally read-only and secondary.
 
 ### Reproducible local scenarios
 
@@ -115,6 +115,14 @@ are absent and supports `--offline` for the local fixture transport:
 .venv/bin/python scripts/run_bursar_live_demo.py --offline --scenario duplicate_invoice
 ```
 
+The explicit live smoke check is dry-run by default and never posts unless
+`--send` is supplied:
+
+```bash
+.venv/bin/python scripts/run_bursar_switch_smoke.py
+.venv/bin/python scripts/run_bursar_switch_smoke.py --send
+```
+
 ## Bursar inspection dashboard
 
 Start the read-only Bursar inspection surface:
@@ -163,6 +171,23 @@ docker compose run --rm api python scripts/run_bursar_scenarios.py
 Stop with `docker compose down`. Reset only the SQLite volume with
 `docker compose down -v`; this removes container data but never deletes source
 files. Restart with `docker compose up --build`.
+
+Docker runtime verification is environment-dependent. This checkout records
+whether Docker is available; when it is unavailable, use the static Compose
+test and do not treat that as a successful image build.
+
+### Release verification
+
+Run the final local submission check, security audit, and full suite with:
+
+```bash
+.venv/bin/python scripts/run_bursar_submission_verification.py
+.venv/bin/python scripts/security_audit.py
+.venv/bin/python -m pytest -q
+```
+
+The 90-second recording sequence is documented in
+`docs/BURSAR_DEMO_RUNBOOK.md`.
 
 ### Safe extraction agent boundary
 

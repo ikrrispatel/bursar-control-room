@@ -136,6 +136,20 @@ required product surface for invoice intake, agent collaboration, and the
 human decision gate; the dashboard cannot approve, reject, override, request
 clarification, or create ledger entries.
 
+The final submission verification command is
+`scripts/run_bursar_submission_verification.py`. It checks all five scenarios,
+the human approval gate, duplicate blocking, missing-evidence clarification,
+conflict escalation, reasoned override, evidence passports, case timelines,
+and simulated-ledger gating. `scripts/security_audit.py` checks tracked files
+for committed credential patterns, sensitive logging, credentials in Docker
+configuration, and forbidden agent mutation paths.
+
+The 90-second demo sequence is documented in
+`docs/BURSAR_DEMO_RUNBOOK.md`. The explicit live smoke command is
+`scripts/run_bursar_switch_smoke.py --send`; without `--send` it performs no
+network write. Missing live credentials fail safely, while all offline fixture
+commands remain independent of Mattermost and model credentials.
+
 ## SQLite persistence boundary
 
 `app/bursar/repository.py` provides an explicit SQLite schema for Bursar cases,
