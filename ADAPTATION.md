@@ -36,6 +36,13 @@ active Python interpreter (`python -m liteparse.cli`) rather than assuming a
 shell-global `lit` executable. This keeps the documented local virtualenv and
 `uv run` paths deterministic.
 
+The isolated `app/switch_adapter/` package now defines the typed room, message,
+agent-role, message-type, and case-correlation boundary. Its
+`LocalFixtureSwitchAdapter` provides deterministic in-memory room/message
+storage and allowlisted human-command parsing for tests. It intentionally has
+no external Switch/Mattermost client, model calls, dashboard coupling, or
+LangGraph dependency.
+
 ## Modules to modify later
 
 The API, LangGraph workflow, audit persistence, and demo flow will later be
