@@ -16,6 +16,7 @@ class InvoiceIntake(BaseModel):
     invoice_number: str = Field(min_length=1)
     total: Decimal = Field(ge=0)
     currency: str = Field(min_length=1)
+    invoice_text: str = Field(default="", max_length=12000)
     evidence: list[EvidenceReference] = Field(default_factory=list)
     duplicate_of: str | None = None
     duplicate_case_id: str | None = None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents import AgentExtractionInput, AgentProvider
 from app.bursar.checks import FixtureCheckResult, InvoiceIntake, run_fixture_checks
 from app.bursar.decisions import apply_human_decision, create_simulated_ledger_entry
 from app.bursar.models import AgentFinding, AuditEvent, BursarCase, CaseStatus, EvidenceReference, HumanDecision, SimulatedLedgerEntry, utc_now
@@ -80,8 +81,9 @@ class BursarWorkflowResult(BaseModel):
 class LocalBursarWorkflowCoordinator:
     """Coordinates deterministic Bursar state with a local Switch adapter."""
 
-    def __init__(self, adapter: SwitchAdapter | None = None) -> None:
+    def __init__(self, adapter: SwitchAdapter | None = None, agent_provider: AgentProvider | None = None) -> None:
         self.adapter = adapter or LocalFixtureSwitchAdapter()
+        self.agent_provider = agent_provider
         self.cases: dict[str, BursarCase] = {}
         self.checks: dict[str, FixtureCheckResult] = {}
         self.messages: dict[str, list[SwitchMessage]] = {}
@@ -140,10 +142,68 @@ class LocalBursarWorkflowCoordinator:
         initial = self.start_case(posted_intake)
         if initial.case.status.value != fixture.expected.case_status:
             raise AssertionError(f"scenario case status mismatch: {fixture.name}")
+        if self.agent_provider is not None:
+            self.run_extraction_agent(fixture.case_id)
         command = evaluation.fixture.expected.decision_action + " " + evaluation.fixture.case_id
         if evaluation.fixture.expected.decision_reason:
             command += " " + evaluation.fixture.expected.decision_reason
         return self.decide(command, "finance-fixture"), evaluation
+
+    def run_extraction_agent(
+        self,
+        case_id: str,
+        invoice_text: str = "",
+        provider: AgentProvider | None = None,
+    ) -> BursarWorkflowResult:
+        case = self.cases.get(case_id)
+        if case is None:
+            raise ValueError(f"unknown case: {case_id}")
+        active_provider = provider or self.agent_provider
+        if active_provider is None:
+            raise ValueError("no extraction agent provider configured")
+        passport = self.passports.get(case_id)
+        references = passport.evidence_references if passport else []
+        request = AgentExtractionInput(
+            case_id=case_id,
+            invoice_text=invoice_text,
+            evidence_locations=[
+                {
+                    "evidence_id": reference.evidence_id,
+                    "file_name": reference.file_name,
+                    "source_location": reference.source_location or reference.file_name,
+                }
+                for reference in references
+            ],
+        )
+        extraction = active_provider.extract_invoice(request)
+        message = SwitchMessage(
+            room_id=case.room_id or "",
+            case=CaseCorrelation(case_id=case_id),
+            message_type=MessageType.EXTRACTION_FINDING,
+            sender_type="agent",
+            sender_id="intake-extraction-agent",
+            agent_role=AgentRole.INTAKE_EXTRACTION_AGENT,
+            payload=extraction.model_dump(mode="json"),
+            timestamp=utc_now(),
+        )
+        posted = self._post(message)
+        self.messages[case_id].append(posted)
+        self.timeline.append(case_id, "message_posted", posted.sender_id, {"message_id": posted.message_id, "message_type": posted.message_type.value})
+        finding = AgentFinding(
+            finding_id=f"{case_id}-intake-extraction-agent",
+            agent_name="intake_extraction_agent",
+            finding_type="intake_extraction",
+            status=extraction.mode,
+            explanation=extraction.summary,
+            confidence=extraction.confidence,
+            evidence=references,
+        )
+        updated_passport = self.passports[case_id].model_copy(deep=True)
+        updated_passport.agent_findings = [
+            existing for existing in updated_passport.agent_findings if existing.finding_id != finding.finding_id
+        ] + [finding]
+        self.passports[case_id] = updated_passport
+        return self._current_result(case_id)
 
     def decide(self, command: str, actor_id: str, actor_type: str = "human") -> BursarWorkflowResult:
         parsed = self.adapter.parse_human_command(command, actor_id, actor_type)
@@ -184,6 +244,16 @@ class LocalBursarWorkflowCoordinator:
             evidence_passport=passport,
         )
 
+    def _current_result(self, case_id: str) -> BursarWorkflowResult:
+        return BursarWorkflowResult(
+            case=self.cases[case_id],
+            checks=self.checks[case_id],
+            messages=list(self.messages[case_id]),
+            audit_events=list(self.audit_events[case_id]),
+            ledger_entry=self.ledger_entries.get(case_id),
+            evidence_passport=self.passports[case_id],
+        )
+
     def list_case_messages(self, case_id: str) -> list[SwitchMessage]:
         case = self.cases.get(case_id)
         if case is None or case.room_id is None:
@@ -215,6 +285,12 @@ class LocalBursarWorkflowCoordinator:
             )
             for finding in [checks.extraction, checks.duplicate, checks.evidence, checks.policy, checks.risk]
         ]
+        if previous:
+            findings.extend(
+                finding
+                for finding in previous.agent_findings
+                if finding.finding_type == "intake_extraction"
+            )
         return EvidencePassport(
             case_id=case.case_id,
             extracted_invoice_fields={"vendor_name": case.vendor_name, "invoice_number": case.invoice_number, "total": case.total, "currency": case.currency},

@@ -4,6 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app.agents import FixtureAgentProvider
 from app.api.main import app
 from app.api.routes import configure_live_boundary
 from app.bursar.scenarios import evaluate_scenario, load_scenarios
@@ -31,7 +32,7 @@ def test_mocked_live_message_to_decision_flow_posts_back_to_mattermost():
     settings = SwitchConfiguration(base_url="https://mattermost.test", token="token", team_id="team-1", channel_id="channel-1")
     adapter = MattermostSwitchAdapter(settings, httpx.Client(transport=httpx.MockTransport(handler)))
     adapter.create_room("Bursar")
-    boundary = LiveMattermostBursarBoundary(adapter, "channel-1")
+    boundary = LiveMattermostBursarBoundary(adapter, "channel-1", agent_provider=FixtureAgentProvider())
     intake = evaluate_scenario(load_scenarios()[0], "channel-1").intake_message
 
     initial = boundary.receive_message(intake)
@@ -42,7 +43,10 @@ def test_mocked_live_message_to_decision_flow_posts_back_to_mattermost():
     assert initial.case.status.value == "pending_review"
     assert final.case.status.value == "approved"
     assert final.ledger_entry is not None
-    assert post_count == 9
+    extraction_messages = [message for message in final.messages if message.agent_role == "intake_extraction_agent"]
+    assert extraction_messages[0].payload["mode"] == "fixture"
+    assert extraction_messages[0].case.case_id == "scenario-clean"
+    assert post_count == 10
 
 
 def test_api_boundary_validates_room_and_routes_local_offline_flow():

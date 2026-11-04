@@ -13,6 +13,7 @@ def utc_now() -> datetime:
 
 
 class AgentRole(StrEnum):
+    INTAKE_EXTRACTION_AGENT = "intake_extraction_agent"
     INTAKE_AGENT = "intake_agent"
     EXTRACTION_AGENT = "extraction_agent"
     DUPLICATE_AGENT = "duplicate_agent"

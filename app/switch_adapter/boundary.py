@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents import AgentProvider, ModelAgentProvider, ModelConfiguration
+from app.bursar.checks import InvoiceIntake
 from app.bursar.workflow import BursarWorkflowResult, LocalBursarWorkflowCoordinator
 from app.switch_adapter.config import SwitchConfiguration
 from app.switch_adapter.http import MattermostSwitchAdapter
@@ -23,20 +25,22 @@ class SwitchCommandRequest(BaseModel):
 class LiveMattermostBursarBoundary:
     """Validates live room input before handing it to the deterministic coordinator."""
 
-    def __init__(self, adapter: SwitchAdapter, configured_room_id: str, coordinator: LocalBursarWorkflowCoordinator | None = None) -> None:
+    def __init__(self, adapter: SwitchAdapter, configured_room_id: str, coordinator: LocalBursarWorkflowCoordinator | None = None, agent_provider: AgentProvider | None = None) -> None:
         if not configured_room_id.strip():
             raise ValueError("a configured Bursar room is required")
         self.adapter = adapter
         self.configured_room_id = configured_room_id
-        self.coordinator = coordinator or LocalBursarWorkflowCoordinator(adapter)
+        self.coordinator = coordinator or LocalBursarWorkflowCoordinator(adapter, agent_provider=agent_provider)
+        self.agent_provider = agent_provider or self.coordinator.agent_provider
 
     @classmethod
     def from_environment(cls) -> "LiveMattermostBursarBoundary":
         configuration = SwitchConfiguration.from_env()
         if not configuration.channel_id:
             raise ValueError("SWITCH_CHANNEL_ID is required for the webhook/API intake boundary")
+        model_configuration = ModelConfiguration.from_env()
         adapter = MattermostSwitchAdapter(configuration)
-        return cls(adapter, configuration.channel_id)
+        return cls(adapter, configuration.channel_id, agent_provider=ModelAgentProvider(model_configuration))
 
     def receive_message(self, message: SwitchMessage) -> BursarWorkflowResult:
         self._validate_room(message.room_id)
@@ -44,7 +48,11 @@ class LiveMattermostBursarBoundary:
             raise ValueError("live intake accepts only invoice_intake messages")
         if message.sender_type == SenderType.AGENT:
             raise PermissionError("agents cannot submit invoice intake")
-        return self.coordinator.start_case(message, require_posted=False)
+        intake = InvoiceIntake.model_validate(message.payload)
+        result = self.coordinator.start_case(message, require_posted=False)
+        if self.agent_provider is not None:
+            result = self.coordinator.run_extraction_agent(message.case.case_id, invoice_text=intake.invoice_text)
+        return result
 
     def receive_command(self, request: SwitchCommandRequest) -> BursarWorkflowResult:
         self._validate_room(request.room_id)

@@ -99,6 +99,23 @@ findings, human decision records, and ledger results are posted through the
 same Mattermost adapter. The `--offline` mode of
 `scripts/run_bursar_live_demo.py` continues to use `LocalFixtureSwitchAdapter`.
 
+## Safe AI boundary
+
+`app/agents/` defines the typed `AgentProvider` protocol and the sole agent
+role currently enabled: `intake_extraction_agent`. `ModelAgentProvider` sends
+only bounded invoice text and case-scoped evidence locations to an
+OpenAI-compatible JSON endpoint. It uses explicit anti-prompt-injection system
+instructions, a timeout, secret-backed configuration, and strict Pydantic
+output validation. Invalid, incomplete, mismatched, or unsafe model output is
+rejected without changing case state.
+
+`FixtureAgentProvider` returns a visibly marked `fixture` result for offline
+tests and demos; live model results are marked `model_assisted`. The agent can
+extract fields, identify evidence locations, explain uncertainty, and summarize
+for a reviewer. It cannot perform duplicate detection, matching, policy or
+risk decisions, human decisions, or ledger creation. Those deterministic
+services and the human decision gate remain the final authority.
+
 ## Modules to modify later
 
 The API, LangGraph workflow, audit persistence, and demo flow will later be

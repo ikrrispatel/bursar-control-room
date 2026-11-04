@@ -115,6 +115,26 @@ are absent and supports `--offline` for the local fixture transport:
 .venv/bin/python scripts/run_bursar_live_demo.py --offline --scenario duplicate_invoice
 ```
 
+### Safe extraction agent boundary
+
+The optional `intake_extraction_agent` accepts only bounded invoice text and
+case-scoped evidence locations. Its typed result contains extracted fields,
+confidence, source locations, missing fields, uncertainty explanations, and a
+reviewer summary. Model output is validated before it becomes a typed
+`extraction_finding` message in the case room.
+
+Configure the model provider with `MODEL_API_KEY`, `MODEL_BASE_URL`,
+`MODEL_NAME`, and optional `MODEL_TIMEOUT_SECONDS`. The live boundary uses the
+configured OpenAI-compatible JSON endpoint; missing model configuration fails
+safely. Use `FixtureAgentProvider` through `--offline` for deterministic local
+verification. Invoice text is explicitly marked untrusted in the prompt,
+bounded in length, and never combined with unrelated room history.
+
+The agent can extract, locate evidence, explain uncertainty, and summarize. It
+cannot decide duplicates, policy, risk, approval, rejection, clarification, or
+override, and it has no case-state or ledger mutation capability. Deterministic
+services and the human decision gate remain authoritative.
+
 ## Features
 
 - FastAPI service for run creation, lookup, approval, rejection, and audit lookup.

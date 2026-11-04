@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.agents import FixtureAgentProvider, ModelAgentProvider, ModelConfiguration
 from app.bursar.scenarios import load_scenarios
 from app.bursar.workflow import LocalBursarWorkflowCoordinator
 from app.switch_adapter import LocalFixtureSwitchAdapter, MattermostSwitchAdapter, SwitchConfiguration
@@ -20,21 +21,24 @@ def main() -> int:
 
     if args.offline:
         adapter = LocalFixtureSwitchAdapter()
+        agent_provider = FixtureAgentProvider()
     else:
         try:
             configuration = SwitchConfiguration.from_env()
+            model_configuration = ModelConfiguration.from_env()
         except (ValueError, TypeError) as exc:
             print(
-                "Live demo cannot start: missing or invalid Switch credentials/configuration. "
-                "Set SWITCH_BASE_URL, SWITCH_TOKEN, SWITCH_TEAM_ID, and optionally SWITCH_CHANNEL_ID, "
+                "Live demo cannot start: missing or invalid Switch/model credentials or configuration. "
+                "Set SWITCH_BASE_URL, SWITCH_TOKEN, SWITCH_TEAM_ID, MODEL_API_KEY, MODEL_BASE_URL, and MODEL_NAME, "
                 "or pass --offline.",
                 file=sys.stderr,
             )
             return 2
         adapter = MattermostSwitchAdapter(configuration)
+        agent_provider = ModelAgentProvider(model_configuration)
 
     try:
-        result, _ = LocalBursarWorkflowCoordinator(adapter).run_scenario(fixture)
+        result, _ = LocalBursarWorkflowCoordinator(adapter, agent_provider=agent_provider).run_scenario(fixture)
     finally:
         close = getattr(adapter, "close", None)
         if close:
