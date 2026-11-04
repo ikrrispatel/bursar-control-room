@@ -18,6 +18,7 @@ from app.bursar.inspection import (
     TimelineResponse,
 )
 from app.bursar.workflow import LocalBursarWorkflowCoordinator
+from app.bursar.repository import BursarRepository
 from app.switch_adapter import SwitchMessage
 from app.switch_adapter.boundary import LiveMattermostBursarBoundary, SwitchCommandRequest
 
@@ -26,7 +27,8 @@ router = APIRouter()
 RUNS: dict[str, dict] = {}
 RUN_GRAPHS: dict[str, object] = {}
 LIVE_BURSAR_BOUNDARY: LiveMattermostBursarBoundary | None = None
-BURSAR_COORDINATOR = LocalBursarWorkflowCoordinator()
+BURSAR_REPOSITORY = BursarRepository.from_environment_optional()
+BURSAR_COORDINATOR = LocalBursarWorkflowCoordinator(repository=BURSAR_REPOSITORY)
 
 
 @router.get("/health")
@@ -216,7 +218,7 @@ def _live_boundary() -> LiveMattermostBursarBoundary:
     global LIVE_BURSAR_BOUNDARY, BURSAR_COORDINATOR
     if LIVE_BURSAR_BOUNDARY is None:
         try:
-            LIVE_BURSAR_BOUNDARY = LiveMattermostBursarBoundary.from_environment()
+            LIVE_BURSAR_BOUNDARY = LiveMattermostBursarBoundary.from_environment(repository=BURSAR_REPOSITORY)
             BURSAR_COORDINATOR = LIVE_BURSAR_BOUNDARY.coordinator
         except ValueError as exc:
             raise HTTPException(

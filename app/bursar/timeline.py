@@ -39,3 +39,6 @@ class CaseTimelineService:
 
     def for_case(self, case_id: str) -> list[TimelineEvent]:
         return [event for event in self._events if event.case_id == case_id]
+
+    def restore(self, events: list[TimelineEvent]) -> None:
+        self._events = sorted(events, key=lambda event: (event.sequence, event.event_id))

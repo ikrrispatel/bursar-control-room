@@ -131,6 +131,16 @@ findings, and human decisions. Read-only API projections are available at
 `GET /bursar/cases`, `GET /bursar/cases/{case_id}`, and the case's
 `/passport`, `/timeline`, `/findings`, `/decision`, and `/ledger` subroutes.
 
+### SQLite persistence
+
+The Bursar coordinator can persist cases, typed Switch messages, evidence,
+findings, decisions, audit events, timeline events, passports, and simulated
+ledger results in SQLite. Set either `BURSAR_DATABASE_PATH=data/bursar.db` or
+`BURSAR_DATABASE_URL=sqlite:///absolute/path/to/bursar.db`. The schema is
+created and migrated on startup. Remove the configured database file to reset
+local state; do not put credentials, prompts, or secrets in it. If neither
+variable is set, the coordinator remains in-memory for isolated offline tests.
+
 ### Safe extraction agent boundary
 
 The optional `intake_extraction_agent` accepts only bounded invoice text and

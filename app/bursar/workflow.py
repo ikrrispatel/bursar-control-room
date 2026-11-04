@@ -7,6 +7,7 @@ from app.bursar.checks import FixtureCheckResult, InvoiceIntake, run_fixture_che
 from app.bursar.decisions import apply_human_decision, create_simulated_ledger_entry
 from app.bursar.models import AgentFinding, AuditEvent, BursarCase, CaseStatus, EvidenceReference, HumanDecision, SimulatedLedgerEntry, utc_now
 from app.bursar.passport import EvidencePassport
+from app.bursar.repository import BursarRepository
 from app.bursar.timeline import CaseTimelineService
 from app.switch_adapter import (
     AgentRole,
@@ -81,9 +82,10 @@ class BursarWorkflowResult(BaseModel):
 class LocalBursarWorkflowCoordinator:
     """Coordinates deterministic Bursar state with a local Switch adapter."""
 
-    def __init__(self, adapter: SwitchAdapter | None = None, agent_provider: AgentProvider | None = None) -> None:
+    def __init__(self, adapter: SwitchAdapter | None = None, agent_provider: AgentProvider | None = None, repository: BursarRepository | None = None) -> None:
         self.adapter = adapter or LocalFixtureSwitchAdapter()
         self.agent_provider = agent_provider
+        self.repository = repository
         self.cases: dict[str, BursarCase] = {}
         self.checks: dict[str, FixtureCheckResult] = {}
         self.messages: dict[str, list[SwitchMessage]] = {}
@@ -91,6 +93,24 @@ class LocalBursarWorkflowCoordinator:
         self.ledger_entries: dict[str, SimulatedLedgerEntry] = {}
         self.passports: dict[str, EvidencePassport] = {}
         self.timeline = CaseTimelineService()
+        self._restore_repository()
+
+    def _restore_repository(self) -> None:
+        if self.repository is None:
+            return
+        cases = self.repository.list_cases()
+        for case in cases:
+            self.cases[case.case_id] = case
+            passport = self.repository.get_passport(case.case_id)
+            if passport:
+                self.passports[case.case_id] = passport
+                self.audit_events[case.case_id] = list(passport.audit_events)
+                self.ledger_entries[case.case_id] = passport.simulated_ledger_result if passport.simulated_ledger_result else None
+                self.checks[case.case_id] = FixtureCheckResult.model_validate(passport.check_results)
+            else:
+                self.audit_events[case.case_id] = []
+            self.messages[case.case_id] = self.repository.list_messages(case.case_id, case.room_id)
+        self.timeline.restore(self.repository.list_all_timeline())
 
     def start_case(self, intake_message: SwitchMessage, require_posted: bool = True) -> BursarWorkflowResult:
         if intake_message.message_type != MessageType.INVOICE_INTAKE:
@@ -124,13 +144,16 @@ class LocalBursarWorkflowCoordinator:
         self.cases[case_id] = case
         self.checks[case_id] = checks
         self.audit_events[case_id] = []
-        self.timeline.append(case_id, "case_created", intake_message.sender_id, {"intake_message_id": intake_message.message_id})
+        self._persist_message(intake_message)
+        self._append_timeline(case_id, "case_created", intake_message.sender_id, {"intake_message_id": intake_message.message_id})
         posted = [self._post_ack(case), *self._post_findings(case, checks), self._post_decision_request(case, checks, intake)]
         self.messages[case_id] = posted
         for message in posted:
-            self.timeline.append(case_id, "message_posted", message.sender_id, {"message_id": message.message_id, "message_type": message.message_type.value})
+            self._persist_message(message)
+            self._append_timeline(case_id, "message_posted", message.sender_id, {"message_id": message.message_id, "message_type": message.message_type.value})
         passport = self._build_passport(case, intake, checks)
         self.passports[case_id] = passport
+        self._persist_case_state(case_id)
         return BursarWorkflowResult(case=case, checks=checks, messages=posted, evidence_passport=passport)
 
     def run_scenario(self, fixture):
@@ -188,7 +211,8 @@ class LocalBursarWorkflowCoordinator:
         )
         posted = self._post(message)
         self.messages[case_id].append(posted)
-        self.timeline.append(case_id, "message_posted", posted.sender_id, {"message_id": posted.message_id, "message_type": posted.message_type.value})
+        self._persist_message(posted)
+        self._append_timeline(case_id, "message_posted", posted.sender_id, {"message_id": posted.message_id, "message_type": posted.message_type.value})
         finding = AgentFinding(
             finding_id=f"{case_id}-intake-extraction-agent",
             agent_name="intake_extraction_agent",
@@ -203,6 +227,7 @@ class LocalBursarWorkflowCoordinator:
             existing for existing in updated_passport.agent_findings if existing.finding_id != finding.finding_id
         ] + [finding]
         self.passports[case_id] = updated_passport
+        self._persist_case_state(case_id)
         return self._current_result(case_id)
 
     def decide(self, command: str, actor_id: str, actor_type: str = "human") -> BursarWorkflowResult:
@@ -221,20 +246,29 @@ class LocalBursarWorkflowCoordinator:
         updated_case, event = apply_human_decision(case, decision)
         self.cases[case.case_id] = updated_case
         self.audit_events[case.case_id].append(event)
-        self.timeline.append(case.case_id, "human_decision", event.actor_id, event.payload)
+        self._append_timeline(case.case_id, "human_decision", event.actor_id, event.payload)
+        if self.repository:
+            self.repository.save_decision(decision, case.case_id)
+            self.repository.save_audit_event(event)
+            self.repository.save_case(updated_case)
         recorded = self._post_decision_recorded(updated_case, decision)
         self.messages[case.case_id].append(recorded)
-        self.timeline.append(case.case_id, "message_posted", recorded.sender_id, {"message_id": recorded.message_id, "message_type": recorded.message_type.value})
+        self._persist_message(recorded)
+        self._append_timeline(case.case_id, "message_posted", recorded.sender_id, {"message_id": recorded.message_id, "message_type": recorded.message_type.value})
         ledger_entry = None
         if parsed.action in {"approve", "override"}:
             ledger_entry = create_simulated_ledger_entry(updated_case, self.audit_events[case.case_id])
             self.ledger_entries[case.case_id] = ledger_entry
             ledger_message = self._post_ledger_result(updated_case, ledger_entry)
             self.messages[case.case_id].append(ledger_message)
-            self.timeline.append(case.case_id, "ledger_created", ledger_entry.approved_by, {"entry_id": ledger_entry.entry_id})
-            self.timeline.append(case.case_id, "message_posted", ledger_message.sender_id, {"message_id": ledger_message.message_id, "message_type": ledger_message.message_type.value})
+            if self.repository:
+                self.repository.save_ledger_entry(ledger_entry)
+            self._append_timeline(case.case_id, "ledger_created", ledger_entry.approved_by, {"entry_id": ledger_entry.entry_id})
+            self._persist_message(ledger_message)
+            self._append_timeline(case.case_id, "message_posted", ledger_message.sender_id, {"message_id": ledger_message.message_id, "message_type": ledger_message.message_type.value})
         passport = self._build_passport(updated_case, None, self.checks[case.case_id], decision, ledger_entry)
         self.passports[case.case_id] = passport
+        self._persist_case_state(case.case_id)
         return BursarWorkflowResult(
             case=updated_case,
             checks=self.checks[case.case_id],
@@ -304,6 +338,21 @@ class LocalBursarWorkflowCoordinator:
 
     def _post(self, message: SwitchMessage) -> SwitchMessage:
         return self.adapter.post_message(message)
+
+    def _persist_message(self, message: SwitchMessage) -> None:
+        if self.repository:
+            self.repository.save_message(message)
+
+    def _append_timeline(self, case_id: str, event_type: str, actor_id: str, payload: dict) -> None:
+        event = self.timeline.append(case_id, event_type, actor_id, payload)
+        if self.repository:
+            self.repository.save_timeline_event(event)
+
+    def _persist_case_state(self, case_id: str) -> None:
+        if not self.repository:
+            return
+        self.repository.save_case(self.cases[case_id])
+        self.repository.save_passport(self.passports[case_id])
 
     def _post_ack(self, case: BursarCase) -> SwitchMessage:
         payload = IntakeAcknowledgementPayload(

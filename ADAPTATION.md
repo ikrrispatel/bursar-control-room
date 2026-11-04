@@ -136,12 +136,24 @@ required product surface for invoice intake, agent collaboration, and the
 human decision gate; the dashboard cannot approve, reject, override, request
 clarification, or create ledger entries.
 
+## SQLite persistence boundary
+
+`app/bursar/repository.py` provides an explicit SQLite schema for Bursar cases,
+Switch messages, evidence references, agent findings, human decisions,
+append-only audit events, timeline events, evidence passports, and simulated
+ledger entries. It is a storage boundary only: policy, human decision gates,
+and ledger eligibility remain in the deterministic domain services.
+
+Configure `BURSAR_DATABASE_PATH` or a `sqlite:///...` `BURSAR_DATABASE_URL`.
+The schema is initialized on repository construction. Delete the configured
+database file to reset local state. Omitting both variables preserves the
+in-memory fixture mode used by focused tests and offline demos.
+
 ## Modules to modify later
 
-The API, LangGraph workflow, audit persistence, and demo flow will later be
-adapted to correlate cases and evidence with a dedicated Switch/Mattermost
-room. The existing legacy Streamlit AP review UI remains separate from the
-Bursar inspection surface and is not the primary workflow.
+The legacy LangGraph workflow and legacy Streamlit AP review UI remain
+separate from the Bursar persistence and inspection surfaces. The Bursar
+repository does not alter the legacy graph or become a policy authority.
 
 ## Disabled or out of scope for the Bursar MVP
 

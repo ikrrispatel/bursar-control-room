@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.agents import FixtureAgentProvider, ModelAgentProvider, ModelConfiguration
 from app.bursar.scenarios import load_scenarios
+from app.bursar.repository import BursarRepository
 from app.bursar.workflow import LocalBursarWorkflowCoordinator
 from app.switch_adapter import LocalFixtureSwitchAdapter, MattermostSwitchAdapter, SwitchConfiguration
 
@@ -37,12 +38,15 @@ def main() -> int:
         adapter = MattermostSwitchAdapter(configuration)
         agent_provider = ModelAgentProvider(model_configuration)
 
+    repository = BursarRepository.from_environment_optional()
     try:
-        result, _ = LocalBursarWorkflowCoordinator(adapter, agent_provider=agent_provider).run_scenario(fixture)
+        result, _ = LocalBursarWorkflowCoordinator(adapter, agent_provider=agent_provider, repository=repository).run_scenario(fixture)
     finally:
         close = getattr(adapter, "close", None)
         if close:
             close()
+        if repository:
+            repository.close()
     print(f"{fixture.name}: case={result.case.status.value} ledger={'created' if result.ledger_entry else 'none'}")
     return 0
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agents import AgentProvider, ModelAgentProvider, ModelConfiguration
 from app.bursar.checks import InvoiceIntake
 from app.bursar.workflow import BursarWorkflowResult, LocalBursarWorkflowCoordinator
+from app.bursar.repository import BursarRepository
 from app.switch_adapter.config import SwitchConfiguration
 from app.switch_adapter.http import MattermostSwitchAdapter
 from app.switch_adapter.models import MessageType, SenderType, SwitchMessage
@@ -25,22 +26,22 @@ class SwitchCommandRequest(BaseModel):
 class LiveMattermostBursarBoundary:
     """Validates live room input before handing it to the deterministic coordinator."""
 
-    def __init__(self, adapter: SwitchAdapter, configured_room_id: str, coordinator: LocalBursarWorkflowCoordinator | None = None, agent_provider: AgentProvider | None = None) -> None:
+    def __init__(self, adapter: SwitchAdapter, configured_room_id: str, coordinator: LocalBursarWorkflowCoordinator | None = None, agent_provider: AgentProvider | None = None, repository: BursarRepository | None = None) -> None:
         if not configured_room_id.strip():
             raise ValueError("a configured Bursar room is required")
         self.adapter = adapter
         self.configured_room_id = configured_room_id
-        self.coordinator = coordinator or LocalBursarWorkflowCoordinator(adapter, agent_provider=agent_provider)
+        self.coordinator = coordinator or LocalBursarWorkflowCoordinator(adapter, agent_provider=agent_provider, repository=repository)
         self.agent_provider = agent_provider or self.coordinator.agent_provider
 
     @classmethod
-    def from_environment(cls) -> "LiveMattermostBursarBoundary":
+    def from_environment(cls, repository: BursarRepository | None = None) -> "LiveMattermostBursarBoundary":
         configuration = SwitchConfiguration.from_env()
         if not configuration.channel_id:
             raise ValueError("SWITCH_CHANNEL_ID is required for the webhook/API intake boundary")
         model_configuration = ModelConfiguration.from_env()
         adapter = MattermostSwitchAdapter(configuration)
-        return cls(adapter, configuration.channel_id, agent_provider=ModelAgentProvider(model_configuration))
+        return cls(adapter, configuration.channel_id, agent_provider=ModelAgentProvider(model_configuration), repository=repository)
 
     def receive_message(self, message: SwitchMessage) -> BursarWorkflowResult:
         self._validate_room(message.room_id)
