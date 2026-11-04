@@ -50,8 +50,18 @@ override require reasons, terminal cases cannot be decided again, and a
 simulated ledger entry requires a recorded human approval or override first.
 
 The existing AP workflow remains the reusable foundation during this staged
-adaptation. Mattermost/Switch is the primary Bursar workflow surface; the
-companion inspection UI is intentionally read-only and secondary.
+adaptation. Switch is the primary Bursar product surface: the Bursar Control
+Room is a Switch-managed room bridged to Mattermost, and `bursar-reviewer` is
+the named Switch agent in that room. The companion inspection UI is
+intentionally read-only and secondary.
+
+Verified live boundary: a human can post in the Bursar Control Room and
+`bursar-reviewer` responds there under its invoice-review-only instructions.
+The repository runtime can also post a typed task through the Switch agent
+protocol. The complete external-runtime path is not live-verified: Switch
+Console owns the local agent host's inbound stream, which returns HTTP 410 to
+the repository listener. Therefore no live human approval or live ledger flow
+is claimed. See [DEMO.md](DEMO.md) for the honest recording path.
 
 ### Reproducible local scenarios
 
@@ -72,6 +82,56 @@ queried by case ID; events from another case are never included. A ledger
 result is printed only for human approval or a reasoned human override.
 
 ### External Switch/Mattermost transport
+
+The intended authentic live path is the documented Switch agent protocol. Switch Console
+owns the room bridge and agent identity; Bursar uses the agent event stream and
+the agent message endpoint, so the workflow is not merely a direct Mattermost
+REST client. The legacy `MattermostSwitchAdapter` remains available for its
+existing API contract tests and deployments where Mattermost itself is the
+provider, but it is not the Switch-connected demo path.
+
+Configure the Switch-managed agent and existing Bursar room with:
+
+```text
+SWITCH_AGENT_BASE_URL=http://127.0.0.1:<agent-bridge-port>
+SWITCH_AGENT_ID=<Switch-managed-agent-id>
+SWITCH_AGENT_NAME=bursar-reviewer
+SWITCH_AGENT_API_KEY=<Switch-agent-api-key>
+SWITCH_ROOM_ID=<Bursar-Control-Room-id>
+SWITCH_AGENT_TIMEOUT_SECONDS=10
+```
+
+These values are provisioned by Switch Console or the local agent controller;
+never copy credential files into the repository. Run the real room listener and
+post a synthetic review task with:
+
+```bash
+.venv/bin/python scripts/run_bursar_switch_runtime.py --post-demo-task --case-id switch-live-demo
+```
+
+The command posts a named `intake_agent` task through Switch, then attempts to
+listen to the same room's Switch event stream. In Mattermost, a requester can
+post a
+structured message such as:
+
+```text
+/bursar intake {"case_id":"switch-live-demo","vendor_name":"Acme Supplies","invoice_number":"INV-SWITCH-001","total":"110.00","currency":"USD"}
+```
+
+If the configured agent bridge exposes inbound events, the Bursar runtime
+posts typed findings and a decision request. A finance reviewer would then post
+`approve switch-live-demo`, `reject switch-live-demo
+<reason>`, `request_clarification switch-live-demo`, or
+`override switch-live-demo <reason>`. Only the human event is accepted as a
+decision; the app posts the recorded decision and simulated ledger result back
+through Switch. Offline tests continue to use `LocalFixtureSwitchAdapter`.
+
+Current local verification for `bursar-reviewer` posts the task successfully,
+then receives HTTP 410 because its inbound connection is reserved for the
+Switch Console host. The runtime reports this explicitly and does not take over
+the managed agent. Completion of the live loop requires an external agent
+bridge/API key (or a Switch Console-supported handoff) that exposes the agent
+event stream to this process.
 
 The `MattermostSwitchAdapter` is an optional HTTP transport behind the same
 `SwitchAdapter` protocol. It uses the documented Mattermost REST v4 channel and

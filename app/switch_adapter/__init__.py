@@ -13,10 +13,13 @@ from app.switch_adapter.models import (
     AgentRole,
     CaseCorrelation,
     MessageType,
+    SenderType,
     SwitchMessage,
     SwitchRoom,
 )
 from app.switch_adapter.protocol import SwitchAdapter
+from app.switch_adapter.agent_config import SwitchAgentConfiguration
+from app.switch_adapter.agent_protocol import SwitchAgentProtocolAdapter, SwitchAgentTransportError
 
 __all__ = [
     "AgentRole",
@@ -29,7 +32,11 @@ __all__ = [
     "SwitchProviderError",
     "SwitchMalformedResponseError",
     "MessageType",
+    "SenderType",
     "SwitchAdapter",
     "SwitchMessage",
     "SwitchRoom",
+    "SwitchAgentConfiguration",
+    "SwitchAgentProtocolAdapter",
+    "SwitchAgentTransportError",
 ]

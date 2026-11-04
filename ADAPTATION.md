@@ -70,6 +70,32 @@ SQLite, or a rewrite of the legacy graph.
 
 ## External transport boundary
 
+The Switch-connected path is implemented in
+`app/switch_adapter/agent_protocol.py` and `app/switch_adapter/runtime.py`.
+Its environment-backed default identity is the existing `bursar-reviewer`
+agent; the numeric/UUID agent ID and API credential remain deployment
+configuration and are never hard-coded.
+It follows Switch's documented agent bridge: the configured Switch-managed
+agent posts to the configured Bursar room, listens on the room-scoped SSE
+event stream, and keeps the connection lease alive with the documented
+heartbeat. Room creation and bridge configuration remain Switch Console
+responsibilities; the application does not invent provider endpoints or
+credentials. `scripts/run_bursar_switch_runtime.py --post-demo-task` is the
+live demo entry point. The runtime ignores platform-originated agent messages,
+requires the configured room ID, and routes only human allowlisted commands to
+the deterministic decision service.
+
+The live workflow is therefore Switch-dependent: the agent identity, room
+bridge, event stream, and human collaboration all come from Switch. Without
+Switch, only the explicitly supported local fixture adapter can run; a direct
+Mattermost post is not treated as proof of Switch centrality.
+
+In live verification, the existing `bursar-reviewer` task post succeeds, but
+its inbound connection returns HTTP 410 because the connection is reserved for
+the Switch Console host. The runtime refuses to take it over and reports that
+an external agent bridge or Console-supported handoff is required. This is an
+explicit environment limitation, not a simulated success claim.
+
 The optional `MattermostSwitchAdapter` now implements the same protocol using
 only documented Mattermost REST v4 operations: channel lookup or creation,
 post creation, and channel post retrieval. `SwitchConfiguration` reads
@@ -84,11 +110,9 @@ timeouts, and provider response shapes. Human command parsing remains the
 same allowlist as the local adapter. Contract tests use an injected fake HTTP
 transport and do not require live credentials.
 
-The repository did not contain a Switch-specific API contract. Therefore this
-slice targets the official Mattermost REST v4 contract and deliberately does
-not invent Switch-specific endpoints or event/webhook behavior. A future live
-Switch integration should confirm whether Switch adds a separate gateway
-contract before extending this adapter.
+The Mattermost adapter is retained for compatibility with the earlier
+provider-neutral boundary and its tests. It is not used by the authentic
+Switch agent runtime described above.
 
 `LiveMattermostBursarBoundary` connects the adapter to the Bursar coordinator
 without touching the legacy LangGraph graph. `POST /switch/messages` accepts
@@ -207,3 +231,7 @@ workflow. Humans and agents collaborate in a team-chat room; agents extract,
 explain, and suggest, while deterministic services enforce policy and humans
 make approval decisions. A dashboard may inspect evidence later, but it is not
 the product's primary surface.
+When a local Switch Console-managed agent reserves its inbound connection for
+the Console host, the runtime refuses to take it over and reports that an
+external agent bridge or Console-supported handoff is required. This is an
+explicit environment limitation, not a simulated success claim.
