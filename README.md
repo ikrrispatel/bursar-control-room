@@ -222,13 +222,12 @@ created and migrated on startup. Remove the configured database file to reset
 local state; do not put credentials, prompts, or secrets in it. If neither
 variable is set, the coordinator remains in-memory for isolated offline tests.
 
-Repository-level SQLite persistence is covered by automated tests. The live
-clean-room verification used in-memory state, and a subsequent temporary-
-database live rerun was not completed after the relay encountered an
-approval-before-case ordering condition and the final controlled attempt did
-not receive a fresh manual intake. Live post-process persistence is therefore
-not claimed verified. No temporary database or credentials are part of the
-repository.
+Repository-level SQLite persistence is covered by automated tests. A controlled
+live clean-invoice run using a temporary database outside the repository also
+verified process-exit persistence: intake produced findings, a human approval
+produced the decision and ledger result, and an independent post-exit query
+found 1 audit event, 13 timeline events, and 1 ledger entry. No temporary
+database or credentials are part of the repository.
 
 ### Docker Compose
 

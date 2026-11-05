@@ -45,10 +45,12 @@ findings, human approval, `human_decision_recorded`, and `ledger_result` were
 observed. This is a verified local Console-compatible relay path, not proof
 that the repository owns the Switch agent SSE stream.
 
-SQLite persistence is verified by repository tests. The live room run above
-used in-memory state; a follow-up temporary-database run was not completed, so
-live post-exit persistence remains unverified. Do not present that as a live
-database result in a recording.
+The live room flow has also been verified with a temporary SQLite database
+outside the repository. After the relay exited, an independent query confirmed
+the persisted case, human approval, audit/timeline records, and ledger result:
+1 audit event, 13 timeline events, and 1 ledger entry. This verifies the
+Console-compatible Mattermost relay's post-exit persistence path; it does not
+verify inbound approval through the external Switch agent SSE stream.
 
 ## Offline verification
 

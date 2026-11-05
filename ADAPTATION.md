@@ -194,12 +194,11 @@ The schema is initialized on repository construction. Delete the configured
 database file to reset local state. Omitting both variables preserves the
 in-memory fixture mode used by focused tests and offline demos.
 
-SQLite persistence itself is test-verified. The live clean-room flow above was
-run without a configured database, and the attempted follow-up with a
-temporary ignored database did not complete because the relay encountered an
-approval-before-case ordering condition and the final controlled attempt did
-not receive a fresh manual intake. Consequently, live post-exit persistence
-of that room flow remains unverified; no temporary database is committed.
+SQLite persistence is test-verified and has also been verified after a live
+clean-room relay process exited. The controlled run used a temporary database
+outside the repository and independently confirmed the persisted case,
+approval, audit/timeline records, and ledger gate: 1 audit event, 13 timeline
+events, and 1 ledger entry. No temporary database or credentials are committed.
 
 ## Docker Compose runtime
 
