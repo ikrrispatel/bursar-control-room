@@ -50,9 +50,12 @@ that the repository owns the Switch agent SSE stream.
 
 To reproduce the clean relay path, configure the existing local Console-bridged
 Mattermost settings through the ignored root `.env`, set a temporary
-`BURSAR_DATABASE_PATH` outside the repository, and run:
+`BURSAR_DATABASE_PATH` outside the repository, set the server-side
+`BURSAR_FINANCE_REVIEWER_IDS` allowlist, and run:
 
 ```bash
+BURSAR_DATABASE_PATH="$(mktemp -d /tmp/bursar-demo.XXXXXX)/bursar.db" \
+BURSAR_FINANCE_REVIEWER_IDS=<configured-mattermost-reviewer-user-id> \
 .venv/bin/python scripts/run_bursar_mattermost_relay.py --until-terminal
 ```
 

@@ -202,6 +202,7 @@ SWITCH_TOKEN=<personal-access-token-or-bot-token>
 SWITCH_TEAM_ID=<mattermost-team-id>
 SWITCH_CHANNEL_ID=<existing-bursar-channel-id>
 SWITCH_TIMEOUT_SECONDS=10
+BURSAR_FINANCE_REVIEWER_IDS=<configured-mattermost-reviewer-user-id>
 ```
 
 Live setup path: create a Mattermost bot or personal access token with access
@@ -211,6 +212,13 @@ set the variables above, then construct `MattermostSwitchAdapter` from
 adapter uses the documented channel-create endpoint and resolves the returned
 channel. No live credentials are required for the test suite. The adapter
 does not connect the legacy graph or add model calls.
+
+For the Console-compatible relay, `BURSAR_FINANCE_REVIEWER_IDS` is a
+comma-separated server-side allowlist of Mattermost user IDs. The relay never
+trusts an actor role supplied in a message; approval, rejection, clarification,
+and override commands from other users are refused. API clients separately
+use `BURSAR_API_AUTH_MODE=required`, `BURSAR_API_KEY`, and the finance-reviewer
+API-key variables shown in `.env.example`.
 
 The live API boundary exposes:
 
