@@ -21,6 +21,11 @@ def main() -> int:
     parser.add_argument("--once", action="store_true", help="poll the configured room once")
     parser.add_argument("--poll-seconds", type=float, default=2.0)
     parser.add_argument("--max-idle-seconds", type=float, default=300.0)
+    parser.add_argument(
+        "--until-terminal",
+        action="store_true",
+        help="keep polling after intake until a human decision reaches a terminal result",
+    )
     args = parser.parse_args()
     load_project_env()
     adapter = None
@@ -45,7 +50,9 @@ def main() -> int:
             result = relay.poll_once()
             if result is not None:
                 print(f"bursar_case={result.case.case_id} status={result.case.status.value} ledger={'created' if result.ledger_entry else 'none'}")
-                return 0
+                terminal = result.ledger_entry is not None or result.case.status.value == "rejected"
+                if not args.until_terminal or terminal:
+                    return 0
             if args.once or time.monotonic() - started >= args.max_idle_seconds:
                 print("Mattermost relay ended without a Bursar task")
                 return 0

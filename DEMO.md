@@ -6,11 +6,11 @@ product surface; the dashboard is read-only and secondary.
 | Time | Action | Verification label |
 |---|---|---|
 | 0:00–0:10 | Open the existing Bursar Control Room and show `bursar-reviewer` in the room. | LIVE SWITCH |
-| 0:10–0:25 | Post a synthetic invoice-review request and show `bursar-reviewer` responding with its typed review role and no approval, policy-override, or ledger authority. | LIVE SWITCH; verified |
-| 0:25–0:45 | Run `scripts/run_bursar_scenarios.py` and show clean, duplicate, missing-evidence, conflicting-evidence, and override outcomes. | LOCAL DETERMINISTIC |
-| 0:45–1:05 | Show the clean fixture's human approval gate and simulated ledger result. | LOCAL DETERMINISTIC |
-| 1:05–1:20 | Show duplicate blocking or missing-evidence clarification with no ledger result. | LOCAL DETERMINISTIC |
-| 1:20–1:30 | Show the evidence passport/timeline, then state that the external Switch agent inbound path is unavailable in this local Console setup. | UNVERIFIED boundary; relay path separately verified |
+| 0:10–0:25 | Start the Console-compatible relay with `--until-terminal`, then post the exact clean intake below. Show the five typed findings and decision request. | LIVE SWITCH relay; verified |
+| 0:25–0:40 | Post the exact human approval command below. Show `human_decision_recorded` followed by `ledger_result: created`. | LIVE SWITCH relay; verified |
+| 0:40–0:55 | Show the persisted case evidence passport and timeline: 1 audit event, 13 timeline events, and 1 ledger entry. | LIVE SQLite relay; verified |
+| 0:55–1:15 | Run `scripts/run_bursar_scenarios.py` and show clean, duplicate, missing-evidence, conflicting-evidence, and override outcomes. | LOCAL DETERMINISTIC; fixture mode |
+| 1:15–1:30 | Show the blocked/clarification fixture and state that the external Switch agent SSE inbound path remains unavailable because Console owns it. | LOCAL DETERMINISTIC + UNVERIFIED boundary |
 
 ## Verified live Switch path
 
@@ -26,7 +26,8 @@ protocol:
 
 ## Unverified boundary
 
-The repository runtime must not claim a live human approval or ledger result.
+The external Switch agent-protocol runtime must not claim a live human approval
+or ledger result.
 The local Switch Console reserves `bursar-reviewer`'s inbound agent host, so
 the external listener receives HTTP 410:
 
@@ -36,6 +37,8 @@ Switch event stream is owned by the local Switch Console agent host
 
 The runtime refuses takeover. Full live verification requires an external
 Switch agent bridge/API key or a Switch Console-supported event-stream handoff.
+The external runtime inbound decision path is unavailable in this
+Console-owned setup; the separate Mattermost relay path above is verified.
 
 ## Verified Console-compatible relay flow
 
@@ -44,6 +47,28 @@ through the Mattermost relay: intake, extraction/duplicate/evidence/policy/risk
 findings, human approval, `human_decision_recorded`, and `ledger_result` were
 observed. This is a verified local Console-compatible relay path, not proof
 that the repository owns the Switch agent SSE stream.
+
+To reproduce the clean relay path, configure the existing local Console-bridged
+Mattermost settings through the ignored root `.env`, set a temporary
+`BURSAR_DATABASE_PATH` outside the repository, and run:
+
+```bash
+.venv/bin/python scripts/run_bursar_mattermost_relay.py --until-terminal
+```
+
+Post these messages manually in Bursar Control Room:
+
+```text
+/bursar intake {"case_id":"relay-demo-<fresh-id>","vendor_name":"Acme Supplies","invoice_number":"INV-DEMO-<fresh-id>","total":"110.00","currency":"USD"}
+approve relay-demo-<fresh-id>
+```
+
+Expected outputs are an intake acknowledgement, extraction, duplicate,
+evidence, policy, and risk findings, a human decision request,
+`human_decision_recorded`, and `ledger_result` with `status=created`. When no
+model credentials are configured, the fixture provider is visibly marked
+fixture mode; this demo does not claim real document extraction. Query the
+temporary database independently after exit to verify persistence.
 
 The live room flow has also been verified with a temporary SQLite database
 outside the repository. After the relay exited, an independent query confirmed

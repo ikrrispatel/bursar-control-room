@@ -73,9 +73,6 @@ path is unavailable in this Console-owned setup. The separate
 Console-compatible relay flow above is verified. See [DEMO.md](DEMO.md) for
 the exact boundaries.
 
-external runtime inbound decision path is unavailable in this Console-owned
-setup.
-
 ### Reproducible local scenarios
 
 The local Bursar coordinator includes five deterministic fixtures:
