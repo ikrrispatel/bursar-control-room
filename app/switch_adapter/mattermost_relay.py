@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -80,6 +81,11 @@ class MattermostBursarRelay:
             return result
 
         if COMMAND_PREFIX.fullmatch(post.body.strip()):
+            reviewer_ids = getattr(self.adapter.configuration, "finance_reviewer_ids", None)
+            if reviewer_ids is None and os.getenv("BURSAR_API_AUTH_MODE", "required").strip().lower() != "local":
+                raise PermissionError("finance reviewer authorization is not configured")
+            if reviewer_ids is not None and post.actor_id not in reviewer_ids:
+                raise PermissionError("finance reviewer authorization is required")
             command = self.adapter.parse_human_command(post.body.strip(), post.actor_id)
             if command.case_id not in self._observed_intake_case_ids:
                 raise ValueError("human decision requires an intake observed in this relay session")

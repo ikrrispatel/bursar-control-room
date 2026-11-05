@@ -76,6 +76,24 @@ def test_resolves_room_posts_typed_message_and_lists_case_messages():
     assert [item.message_id for item in adapter.list_case_messages("channel-1", "case-1")] == ["post-1"]
 
 
+def test_channel_id_is_validated_against_resolved_team_name():
+    settings = MattermostRelayConfiguration(
+        base_url="https://mattermost.test",
+        token="secret-token",
+        channel_id="channel-1",
+        team_name="Switch",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v4/teams":
+            return httpx.Response(200, json=[{"id": "team-1", "display_name": "Switch"}])
+        return httpx.Response(200, json={"id": "channel-1", "team_id": "team-2", "display_name": "Bursar"})
+
+    adapter = MattermostSwitchAdapter(settings, httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(SwitchProviderError, match="different team"):
+        adapter.create_room("ignored")
+
+
 def test_creates_room_when_channel_id_is_not_configured():
     requests: list[dict] = []
 
@@ -185,6 +203,7 @@ def test_password_fallback_logs_in_once_and_uses_session_token():
         username="user",
         password="local-password",
         channel_id="channel-1",
+        team_id="team-1",
     )
     calls: list[tuple[str, str, dict]] = []
 

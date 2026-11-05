@@ -64,7 +64,7 @@ class MattermostSwitchAdapter:
 
     def create_room(self, name: str, purpose: str = "") -> SwitchRoom:
         team_id = getattr(self.configuration, "team_id", None)
-        if not self.configuration.channel_id and not team_id and getattr(self.configuration, "team_name", None):
+        if not team_id and getattr(self.configuration, "team_name", None):
             team_id = self._resolve_team_by_name(self.configuration.team_name)
         if self.configuration.channel_id:
             room = self._get_room(self.configuration.channel_id)

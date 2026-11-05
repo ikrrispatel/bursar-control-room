@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from langgraph.types import Command
 
 from app.graph.workflow import build_graph
@@ -21,8 +22,19 @@ from app.bursar.workflow import LocalBursarWorkflowCoordinator
 from app.bursar.repository import BursarRepository
 from app.switch_adapter import SwitchMessage
 from app.switch_adapter.boundary import LiveMattermostBursarBoundary, SwitchCommandRequest
+from app.api.security import APIPrincipal, require_api_auth, require_finance_reviewer
 
-router = APIRouter()
+public_router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_auth)])
+
+MAX_UPLOAD_FILES = 5
+MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024
+ALLOWED_UPLOAD_TYPES = {
+    ".pdf": {"application/pdf"},
+    ".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    ".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    ".xls": {"application/vnd.ms-excel"},
+}
 
 RUNS: dict[str, dict] = {}
 RUN_GRAPHS: dict[str, object] = {}
@@ -31,7 +43,7 @@ BURSAR_REPOSITORY = BursarRepository.from_environment_optional()
 BURSAR_COORDINATOR = LocalBursarWorkflowCoordinator(repository=BURSAR_REPOSITORY)
 
 
-@router.get("/health")
+@public_router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
 
@@ -101,7 +113,9 @@ def receive_switch_message(message: SwitchMessage) -> dict:
 
 
 @router.post("/switch/commands")
-def receive_switch_command(request: SwitchCommandRequest) -> dict:
+def receive_switch_command(request: SwitchCommandRequest, principal: APIPrincipal = Depends(require_finance_reviewer)) -> dict:
+    # The request actor is untrusted; identity comes from the authenticated principal.
+    request = request.model_copy(update={"actor_id": principal.actor_id, "actor_type": "human"})
     try:
         result = _live_boundary().receive_command(request)
     except PermissionError as exc:
@@ -113,28 +127,46 @@ def receive_switch_command(request: SwitchCommandRequest) -> dict:
 
 @router.post("/runs")
 async def create_run(files: list[UploadFile] = File(...)) -> dict:
+    if not files or len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(status_code=400, detail=f"upload must contain 1 to {MAX_UPLOAD_FILES} files")
     run_id = str(uuid4())
     upload_dir = Path("data/uploads") / run_id
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     uploaded_documents = []
+    try:
+        for index, file in enumerate(files):
+            original_name = Path(file.filename or "").name
+            suffix = Path(original_name).suffix.lower()
+            if not original_name or Path(file.filename or "").is_absolute() or original_name != file.filename or suffix not in ALLOWED_UPLOAD_TYPES:
+                raise HTTPException(status_code=415, detail="unsupported upload type")
+            if file.content_type and file.content_type not in ALLOWED_UPLOAD_TYPES[suffix]:
+                raise HTTPException(status_code=415, detail="unsupported upload type")
+            safe_name = f"document-{index:03d}-{uuid4().hex}{suffix}"
+            path = upload_dir / safe_name
+            size = 0
+            with path.open("wb") as destination:
+                while chunk := await file.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_FILE_BYTES:
+                        raise HTTPException(status_code=413, detail="uploaded file is too large")
+                    destination.write(chunk)
+            uploaded_documents.append({"path": str(path), "filename": original_name, "document_type": "unknown"})
 
-    for file in files:
-        path = upload_dir / file.filename
-        path.write_bytes(await file.read())
-        uploaded_documents.append(
-            {
-                "path": str(path),
-                "filename": file.filename,
-                "document_type": "unknown",
-            }
+        graph = build_graph()
+        result = graph.invoke(
+            {"run_id": run_id, "uploaded_documents": uploaded_documents},
+            config={"configurable": {"thread_id": run_id}},
         )
-
-    graph = build_graph()
-    result = graph.invoke(
-        {"run_id": run_id, "uploaded_documents": uploaded_documents},
-        config={"configurable": {"thread_id": run_id}},
-    )
+    except HTTPException:
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        raise
+    except Exception as exc:
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        raise HTTPException(status_code=422, detail="document processing failed") from exc
+    finally:
+        for file in files:
+            await file.close()
 
     RUNS[run_id] = result
     RUN_GRAPHS[run_id] = graph
@@ -155,18 +187,18 @@ def get_run(run_id: str) -> dict:
 
 
 @router.post("/runs/{run_id}/approve")
-def approve_run(run_id: str) -> dict:
+def approve_run(run_id: str, principal: APIPrincipal = Depends(require_finance_reviewer)) -> dict:
     return _resume_run(
         run_id,
-        {"status": "approved", "approved_by": "api"},
+        {"status": "approved", "approved_by": principal.actor_id},
     )
 
 
 @router.post("/runs/{run_id}/reject")
-def reject_run(run_id: str) -> dict:
+def reject_run(run_id: str, principal: APIPrincipal = Depends(require_finance_reviewer)) -> dict:
     return _resume_run(
         run_id,
-        {"status": "rejected", "approved_by": "api"},
+        {"status": "rejected", "approved_by": principal.actor_id},
     )
 
 

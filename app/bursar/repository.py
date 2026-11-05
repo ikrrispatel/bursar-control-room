@@ -28,12 +28,12 @@ class BursarRepository:
     def __init__(self, database_path: str | Path) -> None:
         self.database_path = str(database_path)
         self._lock = threading.RLock()
+        self._connections: dict[int, sqlite3.Connection] = {}
+        self._connections_lock = threading.RLock()
+        self._closed = False
         try:
             if self.database_path != ":memory:":
                 Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
-            self._connection = sqlite3.connect(self.database_path)
-            self._connection.row_factory = sqlite3.Row
-            self._connection.execute("PRAGMA foreign_keys = ON")
             self.initialize()
         except (OSError, sqlite3.Error) as exc:
             raise BursarRepositoryError("unable to initialize Bursar database") from exc
@@ -74,9 +74,32 @@ class BursarRepository:
                 self._connection.rollback()
                 raise BursarRepositoryError("unable to initialize Bursar schema") from exc
 
+    def _get_connection(self) -> sqlite3.Connection:
+        thread_id = threading.get_ident()
+        with self._connections_lock:
+            if self._closed:
+                raise sqlite3.ProgrammingError("Bursar repository is closed")
+            connection = self._connections.get(thread_id)
+            if connection is None:
+                connection = sqlite3.connect(self.database_path, timeout=5.0, check_same_thread=True)
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute("PRAGMA busy_timeout = 5000")
+                if self.database_path != ":memory:":
+                    connection.execute("PRAGMA journal_mode = WAL")
+                self._connections[thread_id] = connection
+            return connection
+
+    @property
+    def _connection(self) -> sqlite3.Connection:
+        return self._get_connection()
+
     def close(self) -> None:
-        with self._lock:
-            self._connection.close()
+        with self._connections_lock:
+            self._closed = True
+            for connection in self._connections.values():
+                connection.close()
+            self._connections.clear()
 
     def _execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
         try:

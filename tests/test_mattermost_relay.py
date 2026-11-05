@@ -151,10 +151,19 @@ def test_relay_rejects_reasonless_reject_and_duplicate_posts():
         relay.process_post({"id": "human-reject", "channel_id": ROOM, "user_id": "finance-reviewer", "message": "reject relay-clean"})
 
 
-def test_mattermost_relay_config_does_not_require_agent_or_team_credentials(monkeypatch):
+def test_relay_requires_configured_finance_reviewer_in_production_mode(monkeypatch):
+    monkeypatch.setenv("BURSAR_API_AUTH_MODE", "required")
+    relay = make_relay([intake_post()], [])
+    relay.poll_once()
+    with pytest.raises(PermissionError, match="finance reviewer authorization"):
+        relay.process_post(approval_post())
+
+
+def test_mattermost_relay_config_requires_team_for_channel_id(monkeypatch):
     monkeypatch.setenv("SWITCH_BASE_URL", "http://mattermost.local")
     monkeypatch.setenv("SWITCH_TOKEN", "mattermost-token")
     monkeypatch.setenv("SWITCH_CHANNEL_ID", ROOM)
+    monkeypatch.setenv("SWITCH_TEAM_NAME", "Switch")
     monkeypatch.delenv("SWITCH_TEAM_ID", raising=False)
     monkeypatch.delenv("SWITCH_AGENT_BASE_URL", raising=False)
     monkeypatch.delenv("SWITCH_AGENT_ID", raising=False)
@@ -164,6 +173,7 @@ def test_mattermost_relay_config_does_not_require_agent_or_team_credentials(monk
 
     assert configuration.channel_id == ROOM
     assert configuration.team_id is None
+    assert configuration.team_name == "Switch"
 
 
 def test_mattermost_relay_config_preserves_id_precedence_over_name(monkeypatch):
@@ -171,6 +181,7 @@ def test_mattermost_relay_config_preserves_id_precedence_over_name(monkeypatch):
     monkeypatch.setenv("SWITCH_TOKEN", "mattermost-token")
     monkeypatch.setenv("SWITCH_CHANNEL_ID", ROOM)
     monkeypatch.setenv("SWITCH_CHANNEL_NAME", "Ignored Name")
+    monkeypatch.setenv("SWITCH_TEAM_NAME", "Switch")
     monkeypatch.delenv("SWITCH_TEAM_ID", raising=False)
 
     configuration = MattermostRelayConfiguration.from_env()
@@ -214,6 +225,7 @@ def test_mattermost_token_auth_takes_precedence_over_password_fallback(monkeypat
     monkeypatch.setenv("SWITCH_USERNAME", "user")
     monkeypatch.setenv("SWITCH_PASSWORD", "local-password")
     monkeypatch.setenv("SWITCH_CHANNEL_ID", ROOM)
+    monkeypatch.setenv("SWITCH_TEAM_ID", "team-1")
 
     configuration = MattermostRelayConfiguration.from_env()
 
@@ -275,6 +287,7 @@ def test_failed_password_login_redacts_credentials():
         username="user",
         password="super-secret-password",
         channel_id=ROOM,
+        team_id="team-1",
     )
 
     def handler(request: httpx.Request) -> httpx.Response:

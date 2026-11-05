@@ -15,6 +15,16 @@ from app.schemas.parsed_document import ParsedDocument
 RAW_PARSER_DIR = Path("data/processed/parser_raw")
 
 
+def _parser_timeout() -> float:
+    try:
+        value = float(os.getenv("PARSER_TIMEOUT_SECONDS", "60"))
+    except ValueError as exc:
+        raise ValueError("PARSER_TIMEOUT_SECONDS must be numeric") from exc
+    if value <= 0 or value > 600:
+        raise ValueError("PARSER_TIMEOUT_SECONDS is outside the allowed range")
+    return value
+
+
 class ParserAdapter(ABC):
     parser_name: str
 
@@ -53,6 +63,7 @@ class LiteParseAdapter(ParserAdapter):
                 str(output_path),
             ],
             check=True,
+            timeout=_parser_timeout(),
         )
 
         raw = json.loads(output_path.read_text(encoding="utf-8"))
