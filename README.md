@@ -100,6 +100,24 @@ path is unavailable in this Console-owned setup. The separate
 Console-compatible relay flow above is verified. See [DEMO.md](DEMO.md) for
 the exact boundaries.
 
+### Security posture
+
+Non-health API routes fail closed until bearer/API-key authentication is
+configured. The explicit `BURSAR_API_AUTH_MODE=local` setting is reserved for
+deliberate local development. Decision and ledger-related routes require a
+server-derived finance-reviewer identity; caller-supplied actor fields are not
+trusted. Uploads have bounded sizes and counts, accepted-type checks,
+server-generated filenames, parser timeouts, and failure cleanup. SQLite uses
+per-thread connections, transaction boundaries, WAL, and a busy timeout for
+safe concurrent access.
+
+Residual risks for this prototype are rate limiting, automated dependency
+scans, idempotency keys for retryable POST requests, and the external
+Console-owned Switch SSE limitation. The last limitation is explicit: the
+Console-managed agent stream returns HTTP 410 to an external listener, so the
+verified live inbound path is the Console-compatible Mattermost relay rather
+than external Switch agent-protocol takeover.
+
 ### Reproducible local scenarios
 
 The local Bursar coordinator includes five deterministic fixtures:
