@@ -6,7 +6,15 @@ from app.bursar.inspection import BursarInspectionService
 from app.bursar.scenarios import load_scenarios
 from app.bursar.workflow import LocalBursarWorkflowCoordinator
 from app.switch_adapter import LocalFixtureSwitchAdapter
-from app.ui.bursar_dashboard import escape_dashboard_text, status_chip_html
+from app.ui.bursar_dashboard import (
+    _evidence_summary,
+    _human_gate_summary,
+    _ledger_summary,
+    _risk_summary,
+    _stage_html,
+    escape_dashboard_text,
+    status_chip_html,
+)
 
 
 def populated_coordinator() -> LocalBursarWorkflowCoordinator:
@@ -76,3 +84,22 @@ def test_dashboard_has_no_case_mutation_routes():
         for route in app.routes
     )
     configure_live_boundary(None)
+
+
+def test_dashboard_control_path_summaries_are_read_only_and_understandable():
+    checks = {"risk": {"status": "blocked"}, "evidence": {"status": "missing"}}
+    assert _risk_summary(checks) == "Blocked"
+    assert _evidence_summary(checks) == "Missing"
+    assert _human_gate_summary(None) == "Awaiting finance reviewer"
+    assert _ledger_summary(None) == "Not created"
+    stage = _stage_html("Human decision gate", "Awaiting finance reviewer", "Finance reviewer required", "wait")
+    assert "Human decision gate" in stage
+    assert "Awaiting finance reviewer" in stage
+    assert "unsafe" not in stage
+
+
+def test_dashboard_stage_markup_escapes_untrusted_values():
+    stage = _stage_html("<script>", "<blocked>", "& invoice", "wait")
+    assert "<script>" not in stage
+    assert "&lt;script&gt;" in stage
+    assert "&amp; invoice" in stage

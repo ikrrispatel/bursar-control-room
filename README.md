@@ -1,11 +1,18 @@
-# Invoice-to-Pay Agent
+# Bursar Control Room
 
-Open-source accounts-payable automation prototype built with FastAPI, LangGraph,
-Pydantic, LiteParse, and Docling.
+Bursar is a Switch-first procurement and invoice-review control room. A human
+posts an invoice intake in the Switch-connected Bursar Control Room,
+`bursar-reviewer` contributes visible typed findings, deterministic controls
+surface duplicates/evidence/matching risk, and a finance reviewer must decide
+before any simulated ledger result can be created.
 
-The project models the invoice-to-payment control path around typed data,
-deterministic checks, human approval, ERP-ready posting payloads, and audit
-evidence.
+Mattermost/Switch is the workflow surface; this Streamlit app is read-only
+inspection. The repository also includes a deterministic local fixture mode for
+offline demos. See [DEMO.md](DEMO.md) for the 90-second path and the exact
+verified live boundaries.
+
+The project is built on the open-source Invoice-to-Pay Agent AP foundation,
+using FastAPI, LangGraph, Pydantic, LiteParse, and Docling where applicable.
 
 [![CI](https://github.com/mshojaei77/invoice-to-pay-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/mshojaei77/invoice-to-pay-agent/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
@@ -35,6 +42,26 @@ upload
 It is intended for engineers, AP managers, controllers, ERP consultants, and
 finance automation reviewers who want a runnable reference implementation of an
 invoice-to-pay agent.
+
+## Judge-facing architecture
+
+```text
+Human in Switch room
+  -> bursar-reviewer visible agent response
+  -> typed findings and deterministic duplicate/evidence/matching checks
+  -> finance reviewer decision in the same room
+  -> audit + case timeline
+  -> simulated ledger result only after approve/override
+```
+
+The verified live path is the Console-compatible Mattermost relay bridged into
+the existing Switch room. A clean case completed intake, five findings, human
+approval, `human_decision_recorded`, and `ledger_result`; post-exit persistence
+was independently verified with 1 audit event, 13 timeline events, and 1
+ledger entry. The separate external Switch agent-protocol inbound stream is not
+claimed: local Switch Console owns it and returns HTTP 410 to an external
+listener. Synthetic fixture output is labeled fixture mode and is not real
+document extraction.
 
 ## Bursar Control Room domain boundary
 
