@@ -32,4 +32,4 @@ Report privately by emailing the maintainer listed in `pyproject.toml` with:
 
 ## Residual risks
 
-This prototype still requires additional production hardening: rate limiting and abuse controls, automated dependency vulnerability scans, idempotency keys for retryable POST operations, and a provider-supported inbound Switch event bridge. The local Switch Console owns its external SSE stream and returns HTTP 410 to takeover attempts; the verified Console-compatible Mattermost relay remains the available live inbound path.
+This prototype still requires additional production hardening: rate limiting and abuse controls, automated dependency vulnerability scans, idempotency keys for retryable POST operations, and a provider-supported external client connection to the Console-managed agent. Current standalone Switch agent clients use WebSocket; SSE is legacy/deprecated compatibility transport. Switch Console or its sidecar owns the managed watcher and connection, and the attempted external connection returned HTTP 410. The verified Console-compatible Mattermost relay remains the available live inbound path.

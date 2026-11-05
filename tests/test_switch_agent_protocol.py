@@ -92,7 +92,7 @@ def test_console_owned_agent_stream_fails_without_taking_over_managed_agent():
         configuration(),
         httpx.Client(transport=httpx.MockTransport(handler)),
     )
-    with pytest.raises(SwitchAgentTransportError, match="owned by the local Switch Console agent host"):
+    with pytest.raises(SwitchAgentTransportError, match="external client connection to the Console-managed agent is unavailable"):
         list(adapter.stream_events())
 
 

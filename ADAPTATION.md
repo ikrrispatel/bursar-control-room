@@ -75,15 +75,17 @@ The Switch-connected path is implemented in
 Its environment-backed default identity is the existing `bursar-reviewer`
 agent; the numeric/UUID agent ID and API credential remain deployment
 configuration and are never hard-coded.
-It follows Switch's documented agent bridge: the configured Switch-managed
-agent posts to the configured Bursar room, listens on the room-scoped SSE
-event stream, and keeps the connection lease alive with the documented
-heartbeat. Room creation and bridge configuration remain Switch Console
-responsibilities; the application does not invent provider endpoints or
-credentials. `scripts/run_bursar_switch_runtime.py --post-demo-task` is the
-live demo entry point. The runtime ignores platform-originated agent messages,
-requires the configured room ID, and routes only human allowlisted commands to
-the deterministic decision service.
+Current standalone Switch agent clients use the documented WebSocket agent
+protocol; SSE is a legacy/deprecated compatibility transport. The repository
+retains an older SSE compatibility client only to report the historical
+external-connection result safely. Switch Console or its sidecar owns the
+managed agent watcher and connection, including the room-scoped event stream,
+heartbeat, and credentials. Room creation and bridge configuration remain
+Switch Console responsibilities; the application does not invent provider
+endpoints or credentials. `scripts/run_bursar_switch_runtime.py
+--post-demo-task` is the task-posting entry point. The runtime ignores
+platform-originated agent messages, requires the configured room ID, and routes
+only human allowlisted commands to the deterministic decision service.
 
 The live workflow is therefore Switch-dependent: the agent identity, room
 bridge, event stream, and human collaboration all come from Switch. Without
@@ -91,17 +93,19 @@ Switch, only the explicitly supported local fixture adapter can run; a direct
 Mattermost post is not treated as proof of Switch centrality.
 
 In live verification, the existing `bursar-reviewer` task post succeeds, but
-its inbound connection returns HTTP 410 because the connection is reserved for
-the Switch Console host. The runtime refuses to take it over and reports that
-an external agent bridge or Console-supported handoff is required. This is an
-explicit environment limitation, not a simulated success claim.
+the attempted external client connection returns HTTP 410 because the managed
+connection is reserved for the Switch Console host. The runtime refuses to
+take it over. An independent client would require a separately registered
+agent with its own API key and connection; that is not required for the
+verified Mattermost workflow. This is an explicit environment limitation, not
+a simulated success claim.
 
 The separate Console-compatible Mattermost relay has a verified clean-case
 room flow: a human intake was observed, all five deterministic findings were
 posted, a human approval was routed through the coordinator, and the room
 contained `human_decision_recorded` and `ledger_result` messages. This proves
-the configured local relay path only; it does not remove the HTTP 410
-limitation on the external Switch agent event stream.
+the configured local relay path only; it does not remove the HTTP 410 result
+from the attempted external client connection to the Console-managed agent.
 
 The optional `MattermostSwitchAdapter` now implements the same protocol using
 only documented Mattermost REST v4 operations: channel lookup or creation,
@@ -244,7 +248,9 @@ workflow. Humans and agents collaborate in a team-chat room; agents extract,
 explain, and suggest, while deterministic services enforce policy and humans
 make approval decisions. A dashboard may inspect evidence later, but it is not
 the product's primary surface.
-When a local Switch Console-managed agent reserves its inbound connection for
-the Console host, the runtime refuses to take it over and reports that an
-external agent bridge or Console-supported handoff is required. This is an
-explicit environment limitation, not a simulated success claim.
+When a local Switch Console-managed agent reserves its managed watcher and
+connection for the Console host, the runtime refuses to take it over and
+reports the historical HTTP 410 result from the attempted external client
+connection. An independent client would require a separately registered agent
+with its own API key and connection. This is an explicit environment
+limitation, not a simulated success claim.

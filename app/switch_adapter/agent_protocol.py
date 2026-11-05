@@ -92,7 +92,7 @@ class SwitchAgentProtocolAdapter:
                 if response.status_code >= 400:
                     if response.status_code == 410:
                         raise SwitchAgentTransportError(
-                            "Switch event stream is owned by the local Switch Console agent host; configure an external agent bridge for this runtime"
+                            "external client connection to the Console-managed agent is unavailable; Switch Console owns the managed watcher and connection"
                         )
                     raise SwitchAgentTransportError(f"Switch event stream returned HTTP {response.status_code}")
                 frame: dict[str, str] = {}

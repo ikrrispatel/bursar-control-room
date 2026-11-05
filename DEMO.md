@@ -8,8 +8,10 @@ product surface; the dashboard is read-only and secondary.
 - **Use of Switch:** the live room, named `bursar-reviewer` teammate, and human
   collaboration are visible in the Switch-connected Bursar Control Room. The
   verified approval path uses the Console-compatible Mattermost relay because
-  Console owns the external agent SSE stream and returns HTTP 410; this is not
-  presented as external Switch agent-protocol takeover.
+  Switch Console or its sidecar owns the managed agent watcher and connection.
+  Current standalone Switch agent clients use WebSocket; SSE is
+  legacy/deprecated compatibility transport. The attempted external connection
+  returned HTTP 410; this is not presented as an external client takeover.
 - **Business outcome:** the workflow catches duplicate invoices, stops cases
   with missing or conflicting evidence, and creates a reviewable audit/timeline
   record before a simulated ledger result. It addresses control failures that
@@ -52,9 +54,12 @@ occur.
    uses no credentials.
 
 The live clean path is verified through the Console-compatible Mattermost
-relay. The external Console-owned Switch agent SSE path returns HTTP 410 and is
-not claimed as a native external inbound approval path. Fixture mode uses
-synthetic data and does not claim real document extraction.
+relay. The external client connection to the Console-managed agent is not
+claimed: current standalone Switch agent clients use WebSocket, SSE is
+legacy/deprecated compatibility transport, and Switch Console or its sidecar
+owns the managed watcher and connection. The attempted external connection
+returned HTTP 410. Fixture mode uses synthetic data and does not claim real
+document extraction.
 
 ## Proof of Control
 
@@ -71,7 +76,7 @@ the evidence is live or offline.
 
 The live evidence above is from the verified Console-compatible Mattermost relay;
 the offline rejection evidence is deterministic fixture coverage. Neither path
-claims native external Switch SSE approval, real document extraction, or
+claims an external client approval connection, real document extraction, or
 production readiness.
 
 | Time | Action | Verification label |
@@ -81,7 +86,7 @@ production readiness.
 | 0:25–0:40 | Post the exact human approval command below. Show `human_decision_recorded` followed by `ledger_result: created`. | LIVE SWITCH relay; verified |
 | 0:40–0:55 | Show the persisted case evidence passport and timeline: 1 audit event, 13 timeline events, and 1 ledger entry. | LIVE SQLite relay; verified |
 | 0:55–1:15 | Run `scripts/run_bursar_scenarios.py` and show clean, duplicate, missing-evidence, conflicting-evidence, and override outcomes. | LOCAL DETERMINISTIC; fixture mode |
-| 1:15–1:30 | Show the blocked/clarification fixture and state that the external Switch agent SSE inbound path remains unavailable because Console owns it. | LOCAL DETERMINISTIC + UNVERIFIED boundary |
+| 1:15–1:30 | Show the blocked/clarification fixture and state that an external client connection to the Console-managed agent remains unavailable; Console owns the watcher and connection. | LOCAL DETERMINISTIC + UNVERIFIED boundary |
 
 ## Verified live Switch path
 
@@ -97,19 +102,20 @@ protocol:
 
 ## Unverified boundary
 
-The external Switch agent-protocol runtime must not claim a live human approval
-or ledger result.
-The local Switch Console reserves `bursar-reviewer`'s inbound agent host, so
-the external listener receives HTTP 410:
+The external client connection to the Console-managed `bursar-reviewer` agent
+must not claim a live human approval or ledger result. Current standalone
+Switch agent clients use WebSocket; SSE is legacy/deprecated compatibility
+transport. Switch Console or its sidecar owns the managed watcher and
+connection, so the attempted external connection received HTTP 410:
 
 ```text
-Switch event stream is owned by the local Switch Console agent host
+external client connection to the Console-managed agent is unavailable; Switch Console owns the managed watcher and connection
 ```
 
-The runtime refuses takeover. Full live verification requires an external
-Switch agent bridge/API key or a Switch Console-supported event-stream handoff.
-The external runtime inbound decision path is unavailable in this
-Console-owned setup; the separate Mattermost relay path above is verified.
+The runtime refuses takeover. An independent client would require a separately
+registered agent with its own API key and connection. That is not required for
+the verified Mattermost workflow; the separate Console-compatible relay path
+above is verified.
 
 ## Verified Console-compatible relay flow
 
@@ -117,7 +123,8 @@ The clean case `relay-clean-20261104-01` was verified in the existing room
 through the Mattermost relay: intake, extraction/duplicate/evidence/policy/risk
 findings, human approval, `human_decision_recorded`, and `ledger_result` were
 observed. This is a verified local Console-compatible relay path, not proof
-that the repository owns the Switch agent SSE stream.
+that the repository owns an external client connection to the
+Console-managed agent.
 
 To reproduce the clean relay path, configure the existing local Console-bridged
 Mattermost settings through the ignored root `.env`, set a temporary
@@ -149,7 +156,8 @@ outside the repository. After the relay exited, an independent query confirmed
 the persisted case, human approval, audit/timeline records, and ledger result:
 1 audit event, 13 timeline events, and 1 ledger entry. This verifies the
 Console-compatible Mattermost relay's post-exit persistence path; it does not
-verify inbound approval through the external Switch agent SSE stream.
+verify approval through an external client connection to the
+Console-managed agent.
 
 ## Offline verification
 

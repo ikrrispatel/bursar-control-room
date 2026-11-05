@@ -33,9 +33,10 @@ class MattermostRelayPost(BaseModel):
 class MattermostBursarRelay:
     """Console-compatible inbound relay for the configured Mattermost room.
 
-    This is deliberately separate from the Switch agent SSE runtime. It is a
-    Mattermost relay for local Switch Console deployments whose managed agent
-    host returns HTTP 410 to external event-stream readers.
+    This is deliberately separate from the legacy Switch agent-protocol
+    compatibility runtime. It is a Mattermost relay for local Switch Console
+    deployments whose managed agent host returns HTTP 410 to an attempted
+    external client connection.
     """
 
     def __init__(self, adapter: MattermostSwitchAdapter, boundary: LiveMattermostBursarBoundary) -> None:

@@ -58,10 +58,13 @@ The verified live path is the Console-compatible Mattermost relay bridged into
 the existing Switch room. A clean case completed intake, five findings, human
 approval, `human_decision_recorded`, and `ledger_result`; post-exit persistence
 was independently verified with 1 audit event, 13 timeline events, and 1
-ledger entry. The separate external Switch agent-protocol inbound stream is not
-claimed: local Switch Console owns it and returns HTTP 410 to an external
-listener. Synthetic fixture output is labeled fixture mode and is not real
-document extraction.
+ledger entry. The separate external client connection to the Console-managed
+agent is not claimed. Current standalone Switch agent clients use WebSocket;
+SSE is legacy/deprecated compatibility transport. Switch Console or its
+sidecar owns the managed agent watcher and connection. The attempted external
+connection returned HTTP 410, which is historical evidence of that ownership,
+not a failure of the core Mattermost workflow. Synthetic fixture output is
+labeled fixture mode and is not real document extraction.
 
 ## Bursar Control Room domain boundary
 
@@ -89,16 +92,16 @@ protocol. A complete clean-invoice flow has also been verified through the
 Console-compatible Mattermost relay: intake, all five typed findings, human
 approval, `human_decision_recorded`, and `ledger_result` were observed for a
 fresh case in the Bursar Control Room. This relay path is explicitly a
-Mattermost transport for the local Console bridge; it is not claimed as the
-Switch agent SSE inbound path.
+Mattermost transport for the local Console bridge; it is not claimed as an
+external client connection to the Console-managed agent.
 
-Switch Console still owns the local agent host's inbound stream, which returns
-HTTP 410 to the repository listener. Therefore the Switch agent-protocol
-inbound path remains unverified: there is no live human approval through that
-external runtime inbound decision path. The external runtime inbound decision
-path is unavailable in this Console-owned setup. The separate
-Console-compatible relay flow above is verified. See [DEMO.md](DEMO.md) for
-the exact boundaries.
+Switch Console or its sidecar still owns the managed agent watcher and
+connection. The repository's attempted external connection returned HTTP 410,
+so no external client approval path is claimed. A standalone client would
+require a separately registered agent with its own API key and connection; that
+is not required for the verified Mattermost workflow used by this submission.
+The separate Console-compatible relay flow above is verified. See
+[DEMO.md](DEMO.md) for the exact boundaries.
 
 ### Security posture
 
@@ -112,11 +115,14 @@ per-thread connections, transaction boundaries, WAL, and a busy timeout for
 safe concurrent access.
 
 Residual risks for this prototype are rate limiting, automated dependency
-scans, idempotency keys for retryable POST requests, and the external
-Console-owned Switch SSE limitation. The last limitation is explicit: the
-Console-managed agent stream returns HTTP 410 to an external listener, so the
-verified live inbound path is the Console-compatible Mattermost relay rather
-than external Switch agent-protocol takeover.
+scans, idempotency keys for retryable POST requests, and the unavailable
+external client connection to the Console-managed agent. Current standalone
+Switch agent clients use WebSocket; SSE is legacy/deprecated compatibility
+transport. Switch Console or its sidecar owns the managed watcher and
+connection, and the attempted external connection returned HTTP 410. The
+verified live inbound path is therefore the Console-compatible Mattermost
+relay. An independent client would require a separately registered agent with
+its own API key and connection, which is not required for this submission.
 
 ### Reproducible local scenarios
 
@@ -138,12 +144,15 @@ result is printed only for human approval or a reasoned human override.
 
 ### External Switch/Mattermost transport
 
-The intended authentic live path is the documented Switch agent protocol. Switch Console
-owns the room bridge and agent identity; Bursar uses the agent event stream and
-the agent message endpoint, so the workflow is not merely a direct Mattermost
-REST client. The legacy `MattermostSwitchAdapter` remains available for its
-existing API contract tests and deployments where Mattermost itself is the
-provider, but it is not the Switch-connected demo path.
+The intended authentic live path is the documented Switch agent protocol. Current
+standalone Switch agent clients use WebSocket; SSE is legacy/deprecated
+compatibility transport. Switch Console or its sidecar owns the managed agent
+watcher and connection. The repository retains a legacy compatibility client
+that reports the attempted external connection's HTTP 410 safely; it does not
+take over the Console-managed agent. The verified submission path is the
+Console-compatible Mattermost relay, which does not require an independent
+agent connection. The legacy `MattermostSwitchAdapter` remains available for
+its provider contract, but it is not the Switch-connected demo path.
 
 Configure the Switch-managed agent and existing Bursar room with:
 
@@ -157,8 +166,10 @@ SWITCH_AGENT_TIMEOUT_SECONDS=10
 ```
 
 These values are provisioned by Switch Console or the local agent controller;
-never copy credential files into the repository. Run the real room listener and
-post a synthetic review task with:
+never copy credential files into the repository. An independent client would
+need a separately registered agent, its own API key, and its own connection;
+that setup is not required for the verified Mattermost workflow. Run the real
+room listener and post a synthetic review task with:
 
 ```bash
 .venv/bin/python scripts/run_bursar_switch_runtime.py --post-demo-task --case-id switch-live-demo
@@ -182,11 +193,11 @@ decision; the app posts the recorded decision and simulated ledger result back
 through Switch. Offline tests continue to use `LocalFixtureSwitchAdapter`.
 
 Current local verification for `bursar-reviewer` posts the task successfully,
-then receives HTTP 410 because its inbound connection is reserved for the
-Switch Console host. The runtime reports this explicitly and does not take over
-the managed agent. Completion of the live loop requires an external agent
-bridge/API key (or a Switch Console-supported handoff) that exposes the agent
-event stream to this process.
+then receives HTTP 410 because the attempted external client connection is
+reserved for the Switch Console host. The runtime reports this explicitly and
+does not take over the managed agent. Full external-client verification would
+require a separately registered agent with its own API key and connection; that
+is not required for the verified Mattermost workflow.
 
 The `MattermostSwitchAdapter` is an optional HTTP transport behind the same
 `SwitchAdapter` protocol. It uses the documented Mattermost REST v4 channel and
