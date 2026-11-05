@@ -96,6 +96,13 @@ the Switch Console host. The runtime refuses to take it over and reports that
 an external agent bridge or Console-supported handoff is required. This is an
 explicit environment limitation, not a simulated success claim.
 
+The separate Console-compatible Mattermost relay has a verified clean-case
+room flow: a human intake was observed, all five deterministic findings were
+posted, a human approval was routed through the coordinator, and the room
+contained `human_decision_recorded` and `ledger_result` messages. This proves
+the configured local relay path only; it does not remove the HTTP 410
+limitation on the external Switch agent event stream.
+
 The optional `MattermostSwitchAdapter` now implements the same protocol using
 only documented Mattermost REST v4 operations: channel lookup or creation,
 post creation, and channel post retrieval. `SwitchConfiguration` reads
@@ -186,6 +193,13 @@ Configure `BURSAR_DATABASE_PATH` or a `sqlite:///...` `BURSAR_DATABASE_URL`.
 The schema is initialized on repository construction. Delete the configured
 database file to reset local state. Omitting both variables preserves the
 in-memory fixture mode used by focused tests and offline demos.
+
+SQLite persistence itself is test-verified. The live clean-room flow above was
+run without a configured database, and the attempted follow-up with a
+temporary ignored database did not complete because the relay encountered an
+approval-before-case ordering condition and the final controlled attempt did
+not receive a fresh manual intake. Consequently, live post-exit persistence
+of that room flow remains unverified; no temporary database is committed.
 
 ## Docker Compose runtime
 

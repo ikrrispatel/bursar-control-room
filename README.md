@@ -58,10 +58,23 @@ intentionally read-only and secondary.
 Verified live boundary: a human can post in the Bursar Control Room and
 `bursar-reviewer` responds there under its invoice-review-only instructions.
 The repository runtime can also post a typed task through the Switch agent
-protocol. The complete external-runtime path is not live-verified: Switch
-Console owns the local agent host's inbound stream, which returns HTTP 410 to
-the repository listener. Therefore no live human approval or live ledger flow
-is claimed. See [DEMO.md](DEMO.md) for the honest recording path.
+protocol. A complete clean-invoice flow has also been verified through the
+Console-compatible Mattermost relay: intake, all five typed findings, human
+approval, `human_decision_recorded`, and `ledger_result` were observed for a
+fresh case in the Bursar Control Room. This relay path is explicitly a
+Mattermost transport for the local Console bridge; it is not claimed as the
+Switch agent SSE inbound path.
+
+Switch Console still owns the local agent host's inbound stream, which returns
+HTTP 410 to the repository listener. Therefore the Switch agent-protocol
+inbound path remains unverified: there is no live human approval through that
+external runtime inbound decision path. The external runtime inbound decision
+path is unavailable in this Console-owned setup. The separate
+Console-compatible relay flow above is verified. See [DEMO.md](DEMO.md) for
+the exact boundaries.
+
+external runtime inbound decision path is unavailable in this Console-owned
+setup.
 
 ### Reproducible local scenarios
 
@@ -208,6 +221,14 @@ ledger results in SQLite. Set either `BURSAR_DATABASE_PATH=data/bursar.db` or
 created and migrated on startup. Remove the configured database file to reset
 local state; do not put credentials, prompts, or secrets in it. If neither
 variable is set, the coordinator remains in-memory for isolated offline tests.
+
+Repository-level SQLite persistence is covered by automated tests. The live
+clean-room verification used in-memory state, and a subsequent temporary-
+database live rerun was not completed after the relay encountered an
+approval-before-case ordering condition and the final controlled attempt did
+not receive a fresh manual intake. Live post-process persistence is therefore
+not claimed verified. No temporary database or credentials are part of the
+repository.
 
 ### Docker Compose
 
