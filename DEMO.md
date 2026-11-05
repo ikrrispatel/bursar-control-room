@@ -22,6 +22,40 @@ product surface; the dashboard is read-only and secondary.
   server-authorized finance reviewer can decide, and only approval or reasoned
   override can create the simulated ledger entry.
 
+## Why Switch is essential
+
+The work happens in the Switch-connected Bursar Control Room: a human posts the
+invoice intake, `bursar-reviewer` participates as the named AI teammate, and
+the typed findings and human decision request return to that same room. Only
+the server-authorized finance reviewer can approve, reject, request
+clarification, or override. The simulated ledger result is emitted only after
+the room records an allowed human approval or reasoned override. Without the
+Switch room, the human-agent collaboration and visible decision handoff cannot
+occur.
+
+## Judge proof
+
+| Human action | Agent/system response | Safety control | Persisted evidence |
+|---|---|---|---|
+| Post a synthetic intake in the Bursar room | `bursar-reviewer` and the coordinator return typed findings | Room, case, and message validation | Case, intake message, findings, and evidence passport |
+| Review findings and post an approval command | Coordinator records `human_decision_recorded` | Server-side finance-reviewer authorization; agents cannot decide | Human decision, audit event, and ordered timeline |
+| Observe the final room result | `ledger_result` reports a simulated entry only after approval | Deterministic ledger gate; no approval means no ledger entry | Simulated ledger entry linked to the case |
+
+## Two-case demo sequence
+
+1. **Live clean invoice — Switch/Mattermost relay:** post the synthetic intake
+   in Bursar Control Room, show `bursar-reviewer` findings, post the authorized
+   human approval, then show `human_decision_recorded` and `ledger_result`.
+2. **Offline blocked case — deterministic fixture mode:** run the duplicate or
+   missing-evidence scenario and show a rejected case with no ledger, or a
+   clarification request with no ledger. This path is clone-reproducible and
+   uses no credentials.
+
+The live clean path is verified through the Console-compatible Mattermost
+relay. The external Console-owned Switch agent SSE path returns HTTP 410 and is
+not claimed as a native external inbound approval path. Fixture mode uses
+synthetic data and does not claim real document extraction.
+
 | Time | Action | Verification label |
 |---|---|---|
 | 0:00–0:10 | Open the existing Bursar Control Room and show `bursar-reviewer` in the room. | LIVE SWITCH |
