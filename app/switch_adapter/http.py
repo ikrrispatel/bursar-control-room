@@ -64,6 +64,8 @@ class MattermostSwitchAdapter:
 
     def create_room(self, name: str, purpose: str = "") -> SwitchRoom:
         team_id = getattr(self.configuration, "team_id", None)
+        if not self.configuration.channel_id and not team_id and getattr(self.configuration, "team_name", None):
+            team_id = self._resolve_team_by_name(self.configuration.team_name)
         if self.configuration.channel_id:
             room = self._get_room(self.configuration.channel_id)
         elif getattr(self.configuration, "channel_name", None):
@@ -167,6 +169,26 @@ class MattermostSwitchAdapter:
     def _get_room(self, room_id: str) -> SwitchRoom:
         response = self._request("GET", f"/api/v4/channels/{room_id}")
         return self._room_from_provider(response)
+
+    def _resolve_team_by_name(self, team_name: str) -> str:
+        response = self._request("GET", "/api/v4/teams", params={"per_page": 200})
+        if not isinstance(response, list):
+            raise SwitchMalformedResponseError("provider team lookup returned an unexpected JSON shape")
+        normalized = team_name.strip().casefold()
+        matches = [
+            item
+            for item in response
+            if isinstance(item, dict)
+            and any(
+                isinstance(item.get(key), str) and item[key].strip().casefold() == normalized
+                for key in ("display_name", "name")
+            )
+        ]
+        if not matches:
+            raise SwitchProviderError("no Mattermost team matched SWITCH_TEAM_NAME")
+        if len(matches) > 1:
+            raise SwitchProviderError("SWITCH_TEAM_NAME resolved to multiple Mattermost teams")
+        return self._required_string(matches[0], "id")
 
     def _resolve_room_by_name(self, channel_name: str, team_id: str) -> SwitchRoom:
         response = self._request("GET", f"/api/v4/teams/{team_id}/channels", params={"per_page": 200})

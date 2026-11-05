@@ -101,6 +101,15 @@ def relay_name_configuration() -> MattermostRelayConfiguration:
     )
 
 
+def relay_team_name_configuration() -> MattermostRelayConfiguration:
+    return MattermostRelayConfiguration(
+        base_url="https://mattermost.test",
+        token="secret-token",
+        channel_name="Bursar Control Room",
+        team_name="Switch",
+    )
+
+
 def test_resolves_configured_channel_by_name_with_team_scope():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
@@ -115,6 +124,59 @@ def test_resolves_configured_channel_by_name_with_team_scope():
 
     assert room.room_id == "channel-name"
     assert room.team_id == "team-1"
+
+
+def test_resolves_team_and_channel_by_name_with_authenticated_scope():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v4/teams":
+            return httpx.Response(200, json=[{"id": "team-1", "display_name": "Switch", "name": "switch"}])
+        assert request.url.path == "/api/v4/teams/team-1/channels"
+        return httpx.Response(
+            200,
+            json=[{"id": "channel-name", "team_id": "team-1", "display_name": "Bursar Control Room", "name": "bursar-control-room"}],
+        )
+
+    adapter = MattermostSwitchAdapter(relay_team_name_configuration(), httpx.Client(transport=httpx.MockTransport(handler)))
+    room = adapter.create_room("ignored")
+
+    assert room.room_id == "channel-name"
+    assert room.team_id == "team-1"
+
+
+def test_team_name_resolution_rejects_missing_team():
+    adapter = MattermostSwitchAdapter(
+        relay_team_name_configuration(),
+        httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=[]))),
+    )
+    with pytest.raises(SwitchProviderError, match="no Mattermost team matched SWITCH_TEAM_NAME"):
+        adapter.create_room("ignored")
+
+
+def test_team_name_resolution_rejects_ambiguous_team():
+    response = [
+        {"id": "team-a", "display_name": "Switch"},
+        {"id": "team-b", "display_name": "Switch"},
+    ]
+    adapter = MattermostSwitchAdapter(
+        relay_team_name_configuration(),
+        httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response))),
+    )
+    with pytest.raises(SwitchProviderError, match="multiple Mattermost teams"):
+        adapter.create_room("ignored")
+
+
+def test_team_name_lookup_failure_does_not_expose_token():
+    adapter = MattermostSwitchAdapter(
+        relay_team_name_configuration(),
+        httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(401, json={"message": "secret-token"})
+            )
+        ),
+    )
+    with pytest.raises(SwitchUnauthorizedError) as error:
+        adapter.create_room("ignored")
+    assert "secret-token" not in str(error.value)
 
 
 def test_password_fallback_logs_in_once_and_uses_session_token():

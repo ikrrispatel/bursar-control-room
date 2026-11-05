@@ -56,6 +56,7 @@ class MattermostRelayConfiguration(BaseModel):
     channel_id: str | None = None
     channel_name: str | None = None
     team_id: str | None = None
+    team_name: str | None = None
     agent_user_id: str | None = None
     timeout_seconds: float = Field(default=10.0, gt=0, le=120)
 
@@ -73,8 +74,8 @@ class MattermostRelayConfiguration(BaseModel):
             raise ValueError("Mattermost relay requires SWITCH_TOKEN or SWITCH_USERNAME and SWITCH_PASSWORD")
         if not self.channel_id and not self.channel_name:
             raise ValueError("Mattermost relay requires SWITCH_CHANNEL_ID or SWITCH_CHANNEL_NAME")
-        if not self.channel_id and not self.team_id:
-            raise ValueError("SWITCH_TEAM_ID is required when SWITCH_CHANNEL_NAME is used")
+        if not self.channel_id and not self.team_id and not self.team_name:
+            raise ValueError("SWITCH_TEAM_ID or SWITCH_TEAM_NAME is required when SWITCH_CHANNEL_NAME is used")
         return self
 
     @classmethod
@@ -103,6 +104,7 @@ class MattermostRelayConfiguration(BaseModel):
             channel_id=channel_id,
             channel_name=None if channel_id else channel_name,
             team_id=os.getenv("SWITCH_TEAM_ID") or None,
+            team_name=None if os.getenv("SWITCH_TEAM_ID") else (os.getenv("SWITCH_TEAM_NAME") or None),
             agent_user_id=os.getenv("SWITCH_AGENT_USER_ID") or None,
             timeout_seconds=float(os.getenv("SWITCH_TIMEOUT_SECONDS", "10")),
         )

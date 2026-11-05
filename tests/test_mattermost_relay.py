@@ -122,6 +122,35 @@ def test_mattermost_relay_config_preserves_id_precedence_over_name(monkeypatch):
     assert configuration.channel_name is None
 
 
+def test_mattermost_relay_config_accepts_team_name_when_team_id_is_absent(monkeypatch):
+    monkeypatch.setenv("SWITCH_BASE_URL", "http://mattermost.local")
+    monkeypatch.setenv("SWITCH_TOKEN", "mattermost-token")
+    monkeypatch.setenv("SWITCH_TEAM_NAME", "Switch")
+    monkeypatch.setenv("SWITCH_CHANNEL_NAME", "Bursar Control Room")
+    monkeypatch.delenv("SWITCH_TEAM_ID", raising=False)
+    monkeypatch.delenv("SWITCH_CHANNEL_ID", raising=False)
+
+    configuration = MattermostRelayConfiguration.from_env()
+
+    assert configuration.team_id is None
+    assert configuration.team_name == "Switch"
+    assert configuration.channel_name == "Bursar Control Room"
+
+
+def test_mattermost_relay_config_preserves_team_id_precedence(monkeypatch):
+    monkeypatch.setenv("SWITCH_BASE_URL", "http://mattermost.local")
+    monkeypatch.setenv("SWITCH_TOKEN", "mattermost-token")
+    monkeypatch.setenv("SWITCH_TEAM_ID", "team-1")
+    monkeypatch.setenv("SWITCH_TEAM_NAME", "Ignored Team")
+    monkeypatch.setenv("SWITCH_CHANNEL_NAME", "Bursar Control Room")
+    monkeypatch.delenv("SWITCH_CHANNEL_ID", raising=False)
+
+    configuration = MattermostRelayConfiguration.from_env()
+
+    assert configuration.team_id == "team-1"
+    assert configuration.team_name is None
+
+
 def test_mattermost_token_auth_takes_precedence_over_password_fallback(monkeypatch):
     monkeypatch.setenv("SWITCH_BASE_URL", "http://mattermost.local")
     monkeypatch.setenv("SWITCH_TOKEN", "bearer-token")
@@ -166,7 +195,7 @@ def test_name_based_configuration_requires_team_without_exposing_token(monkeypat
 
     with pytest.raises(ValueError) as error:
         MattermostRelayConfiguration.from_env()
-    assert "SWITCH_TEAM_ID" in str(error.value)
+    assert "SWITCH_TEAM_ID or SWITCH_TEAM_NAME" in str(error.value)
     assert "do-not-print-this-token" not in str(error.value)
 
 
