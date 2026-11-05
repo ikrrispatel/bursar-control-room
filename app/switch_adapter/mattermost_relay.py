@@ -42,6 +42,8 @@ class MattermostBursarRelay:
         self.boundary = boundary
         self.room_id = boundary.configured_room_id
         self._processed_post_ids: set[str] = set()
+        self._observed_intake_case_ids: set[str] = set()
+        self._cursor_initialized = False
 
     def process_post(self, raw: dict[str, Any]) -> BursarWorkflowResult | None:
         post = self._validate_post(raw)
@@ -73,9 +75,14 @@ class MattermostBursarRelay:
                 payload=intake.model_dump(mode="json"),
                 timestamp=utc_now(),
             )
-            return self.boundary.receive_message(message)
+            result = self.boundary.receive_message(message)
+            self._observed_intake_case_ids.add(case_id)
+            return result
 
         if COMMAND_PREFIX.fullmatch(post.body.strip()):
+            command = self.adapter.parse_human_command(post.body.strip(), post.actor_id)
+            if command.case_id not in self._observed_intake_case_ids:
+                raise ValueError("human decision requires an intake observed in this relay session")
             return self.boundary.receive_command(
                 SwitchCommandRequest(room_id=self.room_id, command=post.body.strip(), actor_id=post.actor_id)
             )
@@ -93,11 +100,41 @@ class MattermostBursarRelay:
         return isinstance(envelope, dict) and envelope.get("schema") == "bursar.switch.message.v1" and isinstance(message, dict) and message.get("sender_type") == SenderType.AGENT.value
 
     def poll_once(self) -> BursarWorkflowResult | None:
-        for raw in reversed(self.adapter.list_room_posts(self.room_id)):
+        posts = self.adapter.list_room_posts(self.room_id)
+        if not self._cursor_initialized:
+            self._processed_post_ids.update(self._post_id(post) for post in posts if self._post_id(post))
+            self._cursor_initialized = True
+            return None
+        new_posts = [post for post in posts if self._post_id(post) not in self._processed_post_ids]
+        for raw in self._chronological(new_posts):
             result = self.process_post(raw)
             if result is not None:
                 return result
         return None
+
+    @staticmethod
+    def _post_id(raw: dict[str, Any]) -> str | None:
+        value = raw.get("id") if isinstance(raw, dict) else None
+        return value if isinstance(value, str) and value else None
+
+    @classmethod
+    def _chronological(cls, posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Order provider posts oldest-first when Mattermost timestamps exist.
+
+        Fixture transports often omit ``create_at``; their returned order is
+        retained so deterministic tests and offline providers remain stable.
+        """
+        return [
+            post
+            for _, post in sorted(
+                enumerate(posts),
+                key=lambda item: (
+                    0 if isinstance(item[1].get("create_at"), (int, float)) else 1,
+                    item[1].get("create_at") if isinstance(item[1].get("create_at"), (int, float)) else item[0],
+                    item[0],
+                ),
+            )
+        ]
 
     def _validate_post(self, raw: dict[str, Any]) -> MattermostRelayPost:
         if not isinstance(raw, dict):

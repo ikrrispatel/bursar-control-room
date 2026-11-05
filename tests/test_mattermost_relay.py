@@ -53,10 +53,12 @@ def intake_post(post_id: str = "human-intake") -> dict:
 
 
 def test_clean_invoice_relay_routes_intake_approve_and_ledger():
-    posts = [intake_post()]
+    posts: list[dict] = []
     sent: list[dict] = []
     relay = make_relay(posts, sent)
 
+    assert relay.poll_once() is None
+    posts.append(intake_post())
     initial = relay.poll_once()
     assert initial and initial.case.case_id == "relay-clean"
     assert initial.case.status.value == "pending_review"
@@ -71,6 +73,61 @@ def test_clean_invoice_relay_routes_intake_approve_and_ledger():
     assert any("ledger_result" in item["message"] for item in sent)
     assert any(event.event_type == "human_decision" for event in final.audit_events)
     assert any(event.event_type == "ledger_created" for event in relay.boundary.coordinator.timeline_for_case("relay-clean"))
+
+
+def approval_post(case_id: str = "relay-clean", post_id: str = "human-approve") -> dict:
+    return {"id": post_id, "channel_id": ROOM, "user_id": "finance-reviewer", "message": f"approve {case_id}"}
+
+
+def test_historical_intake_and_approval_are_not_interpreted_after_startup():
+    posts = [intake_post("stale-intake"), approval_post(post_id="stale-approval")]
+    sent: list[dict] = []
+    relay = make_relay(posts, sent)
+
+    assert relay.poll_once() is None
+    assert sent == []
+
+
+def test_fresh_approval_requires_current_session_intake():
+    posts: list[dict] = []
+    sent: list[dict] = []
+    relay = make_relay(posts, sent)
+    assert relay.poll_once() is None
+    posts.append(approval_post(case_id="never-intaked", post_id="fresh-approval"))
+
+    with pytest.raises(ValueError, match="intake observed in this relay session"):
+        relay.poll_once()
+
+
+def test_fresh_intake_then_approval_is_processed_once():
+    posts: list[dict] = []
+    sent: list[dict] = []
+    relay = make_relay(posts, sent)
+    assert relay.poll_once() is None
+    posts.append(intake_post("fresh-intake"))
+    initial = relay.poll_once()
+    assert initial and initial.case.case_id == "relay-clean"
+    assert relay.poll_once() is None
+    posts.append(approval_post(post_id="fresh-approval"))
+    final = relay.poll_once()
+    assert final and final.ledger_entry is not None
+    assert relay.poll_once() is None
+
+
+def test_restart_does_not_accept_old_case_approval_without_new_intake():
+    posts: list[dict] = []
+    first_sent: list[dict] = []
+    first = make_relay(posts, first_sent)
+    assert first.poll_once() is None
+    posts.append(intake_post("restart-intake"))
+    assert first.poll_once() is not None
+
+    second_sent: list[dict] = []
+    second = make_relay(posts, second_sent)
+    assert second.poll_once() is None
+    posts.append(approval_post(post_id="restart-approval"))
+    with pytest.raises(ValueError, match="intake observed in this relay session"):
+        second.poll_once()
 
 
 def test_relay_rejects_wrong_room_missing_actor_and_agent_posts():
