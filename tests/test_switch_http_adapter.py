@@ -5,6 +5,7 @@ import pytest
 
 from app.switch_adapter import (
     CaseCorrelation,
+    MattermostRelayConfiguration,
     MattermostSwitchAdapter,
     MessageType,
     SwitchConfiguration,
@@ -89,6 +90,63 @@ def test_creates_room_when_channel_id_is_not_configured():
     assert room.room_id == "channel-created"
     assert requests[0]["path"] == "/api/v4/channels"
     assert requests[0]["body"]["team_id"] == "team-1"
+
+
+def relay_name_configuration() -> MattermostRelayConfiguration:
+    return MattermostRelayConfiguration(
+        base_url="https://mattermost.test",
+        token="secret-token",
+        channel_name="Bursar Control Room",
+        team_id="team-1",
+    )
+
+
+def test_resolves_configured_channel_by_name_with_team_scope():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/v4/teams/team-1/channels"
+        return httpx.Response(
+            200,
+            json=[{"id": "channel-name", "team_id": "team-1", "display_name": "Bursar Control Room", "name": "bursar-control-room"}],
+        )
+
+    adapter = MattermostSwitchAdapter(relay_name_configuration(), httpx.Client(transport=httpx.MockTransport(handler)))
+    room = adapter.create_room("ignored")
+
+    assert room.room_id == "channel-name"
+    assert room.team_id == "team-1"
+
+
+def test_name_resolution_rejects_missing_channel():
+    adapter = MattermostSwitchAdapter(
+        relay_name_configuration(),
+        httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=[]))),
+    )
+    with pytest.raises(SwitchProviderError, match="no Mattermost channel matched SWITCH_CHANNEL_NAME"):
+        adapter.create_room("ignored")
+
+
+def test_name_resolution_rejects_ambiguous_channel():
+    response = [
+        {"id": "channel-a", "team_id": "team-1", "display_name": "Bursar Control Room"},
+        {"id": "channel-b", "team_id": "team-1", "display_name": "Bursar Control Room"},
+    ]
+    adapter = MattermostSwitchAdapter(
+        relay_name_configuration(),
+        httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response))),
+    )
+    with pytest.raises(SwitchProviderError, match="multiple Mattermost channels"):
+        adapter.create_room("ignored")
+
+
+def test_name_resolution_rejects_channel_from_wrong_team():
+    response = [{"id": "channel-other", "team_id": "team-2", "display_name": "Bursar Control Room"}]
+    adapter = MattermostSwitchAdapter(
+        relay_name_configuration(),
+        httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response))),
+    )
+    with pytest.raises(SwitchProviderError, match="different team"):
+        adapter.create_room("ignored")
 
 
 def test_rejects_different_room_and_agent_command():

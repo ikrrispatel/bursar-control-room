@@ -106,7 +106,20 @@ def test_mattermost_relay_config_does_not_require_agent_or_team_credentials(monk
     configuration = MattermostRelayConfiguration.from_env()
 
     assert configuration.channel_id == ROOM
-    assert not hasattr(configuration, "team_id")
+    assert configuration.team_id is None
+
+
+def test_mattermost_relay_config_preserves_id_precedence_over_name(monkeypatch):
+    monkeypatch.setenv("SWITCH_BASE_URL", "http://mattermost.local")
+    monkeypatch.setenv("SWITCH_TOKEN", "mattermost-token")
+    monkeypatch.setenv("SWITCH_CHANNEL_ID", ROOM)
+    monkeypatch.setenv("SWITCH_CHANNEL_NAME", "Ignored Name")
+    monkeypatch.delenv("SWITCH_TEAM_ID", raising=False)
+
+    configuration = MattermostRelayConfiguration.from_env()
+
+    assert configuration.channel_id == ROOM
+    assert configuration.channel_name is None
 
 
 def test_switch_agent_configuration_remains_separate_and_requires_agent_credentials(monkeypatch):
@@ -117,10 +130,23 @@ def test_switch_agent_configuration_remains_separate_and_requires_agent_credenti
 
 
 def test_missing_mattermost_relay_configuration_names_only_required_variables(monkeypatch):
-    for name in ("SWITCH_BASE_URL", "SWITCH_TOKEN", "SWITCH_CHANNEL_ID", "SWITCH_TEAM_ID"):
+    for name in ("SWITCH_BASE_URL", "SWITCH_TOKEN", "SWITCH_CHANNEL_ID", "SWITCH_CHANNEL_NAME", "SWITCH_TEAM_ID"):
         monkeypatch.delenv(name, raising=False)
-    with pytest.raises(ValueError, match="missing Mattermost relay configuration: SWITCH_BASE_URL, SWITCH_TOKEN, SWITCH_CHANNEL_ID"):
+    with pytest.raises(ValueError, match="missing Mattermost relay configuration: SWITCH_BASE_URL, SWITCH_TOKEN"):
         MattermostRelayConfiguration.from_env()
+
+
+def test_name_based_configuration_requires_team_without_exposing_token(monkeypatch):
+    monkeypatch.setenv("SWITCH_BASE_URL", "http://mattermost.local")
+    monkeypatch.setenv("SWITCH_TOKEN", "do-not-print-this-token")
+    monkeypatch.setenv("SWITCH_CHANNEL_NAME", "Bursar Control Room")
+    monkeypatch.delenv("SWITCH_CHANNEL_ID", raising=False)
+    monkeypatch.delenv("SWITCH_TEAM_ID", raising=False)
+
+    with pytest.raises(ValueError) as error:
+        MattermostRelayConfiguration.from_env()
+    assert "SWITCH_TEAM_ID" in str(error.value)
+    assert "do-not-print-this-token" not in str(error.value)
 
 
 def test_project_env_loader_reads_ignored_env_without_overriding_process(monkeypatch, tmp_path):

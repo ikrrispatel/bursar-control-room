@@ -27,6 +27,7 @@ def main() -> int:
     try:
         configuration = MattermostRelayConfiguration.from_env()
         adapter = MattermostSwitchAdapter(configuration)
+        room = adapter.create_room(configuration.channel_name or configuration.channel_id or "Bursar Control Room")
         repository = BursarRepository.from_environment_optional()
         try:
             provider = ModelAgentProvider(ModelConfiguration.from_env())
@@ -34,7 +35,7 @@ def main() -> int:
             provider = FixtureAgentProvider()
         boundary = LiveMattermostBursarBoundary(
             adapter,
-            configuration.channel_id,
+            room.room_id,
             agent_provider=provider,
             repository=repository,
         )

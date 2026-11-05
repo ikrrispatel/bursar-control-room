@@ -65,6 +65,10 @@ class MattermostSwitchAdapter:
         team_id = getattr(self.configuration, "team_id", None)
         if self.configuration.channel_id:
             room = self._get_room(self.configuration.channel_id)
+        elif getattr(self.configuration, "channel_name", None):
+            if not team_id:
+                raise ValueError("SWITCH_TEAM_ID is required when SWITCH_CHANNEL_NAME is used")
+            room = self._resolve_room_by_name(self.configuration.channel_name, team_id)
         else:
             if not team_id:
                 raise ValueError("SWITCH_TEAM_ID is required when creating a Mattermost room")
@@ -163,7 +167,27 @@ class MattermostSwitchAdapter:
         response = self._request("GET", f"/api/v4/channels/{room_id}")
         return self._room_from_provider(response)
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    def _resolve_room_by_name(self, channel_name: str, team_id: str) -> SwitchRoom:
+        response = self._request("GET", f"/api/v4/teams/{team_id}/channels", params={"per_page": 200})
+        if not isinstance(response, list):
+            raise SwitchMalformedResponseError("provider channel lookup returned an unexpected JSON shape")
+        normalized = channel_name.strip().casefold()
+        matches = [
+            item
+            for item in response
+            if isinstance(item, dict)
+            and any(
+                isinstance(item.get(key), str) and item[key].strip().casefold() == normalized
+                for key in ("display_name", "name")
+            )
+        ]
+        if not matches:
+            raise SwitchProviderError("no Mattermost channel matched SWITCH_CHANNEL_NAME")
+        if len(matches) > 1:
+            raise SwitchProviderError("SWITCH_CHANNEL_NAME resolved to multiple Mattermost channels")
+        return self._room_from_provider(matches[0])
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any] | list[Any]:
         headers = {"Authorization": f"Bearer {self.configuration.token.get_secret_value()}"}
         for attempt in range(self.max_retries + 1):
             try:
@@ -195,7 +219,7 @@ class MattermostSwitchAdapter:
                 body = response.json()
             except ValueError as exc:
                 raise SwitchMalformedResponseError("Switch provider returned non-JSON data") from exc
-            if not isinstance(body, dict):
+            if not isinstance(body, (dict, list)):
                 raise SwitchMalformedResponseError("Switch provider returned an unexpected JSON shape")
             return body
         raise SwitchTransportError("Switch request exhausted retries")
