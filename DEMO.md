@@ -56,6 +56,24 @@ relay. The external Console-owned Switch agent SSE path returns HTTP 410 and is
 not claimed as a native external inbound approval path. Fixture mode uses
 synthetic data and does not claim real document extraction.
 
+## Proof of Control
+
+Use this short segment after the two-case sequence. The labels identify whether
+the evidence is live or offline.
+
+| Step | Exact narration | Expected visible outcome |
+|---|---|---|
+| 1. **LIVE — findings** | “The AI teammate can contribute findings, but findings are only suggestions for the reviewer.” | `bursar-reviewer` findings and the decision request appear in the Bursar room; the case is still awaiting a human decision and no ledger result exists. |
+| 2. **OFFLINE — blocked approval attempts** | “Now we prove the control boundary: an agent-originated approval and an approval from an unlisted caller cannot become a decision.” | The agent approval is ignored/rejected, and the unauthorized caller is rejected by finance-reviewer authorization; neither creates a human decision or ledger entry. |
+| 3. **LIVE — authorized approval** | “Only the configured finance reviewer can approve this case in the room.” | The authorized `approve <case-id>` command is accepted and `human_decision_recorded` appears. |
+| 4. **LIVE — before the gate** | “Before that human approval, the ledger gate is still closed.” | The relay’s pre-approval state is `pending_review`; no `ledger_result` is present. |
+| 5. **LIVE — after the gate** | “After the authorized room approval, and only then, the coordinator records the simulated ledger result.” | `ledger_result` appears with `status=created`, alongside the persisted human decision, audit event, and case timeline. |
+
+The live evidence above is from the verified Console-compatible Mattermost relay;
+the offline rejection evidence is deterministic fixture coverage. Neither path
+claims native external Switch SSE approval, real document extraction, or
+production readiness.
+
 | Time | Action | Verification label |
 |---|---|---|
 | 0:00–0:10 | Open the existing Bursar Control Room and show `bursar-reviewer` in the room. | LIVE SWITCH |
