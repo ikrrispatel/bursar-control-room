@@ -3,6 +3,25 @@
 This is the honest 90-second submission path. Switch/Mattermost is the primary
 product surface; the dashboard is read-only and secondary.
 
+## Judge proof card
+
+- **Use of Switch:** the live room, named `bursar-reviewer` teammate, and human
+  collaboration are visible in the Switch-connected Bursar Control Room. The
+  verified approval path uses the Console-compatible Mattermost relay because
+  Console owns the external agent SSE stream and returns HTTP 410; this is not
+  presented as external Switch agent-protocol takeover.
+- **Business outcome:** the workflow catches duplicate invoices, stops cases
+  with missing or conflicting evidence, and creates a reviewable audit/timeline
+  record before a simulated ledger result. It addresses control failures that
+  otherwise arrive as fragmented email attachments and opaque handoffs.
+- **Reproducibility:** offline mode is clone-reproducible with no credentials;
+  live mode additionally requires the existing Console room, Mattermost
+  authentication, and the configured finance-reviewer ID allowlist. Both paths
+  use synthetic data only.
+- **Human control:** the agent explains and suggests findings; only the
+  server-authorized finance reviewer can decide, and only approval or reasoned
+  override can create the simulated ledger entry.
+
 | Time | Action | Verification label |
 |---|---|---|
 | 0:00–0:10 | Open the existing Bursar Control Room and show `bursar-reviewer` in the room. | LIVE SWITCH |
