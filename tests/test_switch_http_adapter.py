@@ -117,6 +117,31 @@ def test_resolves_configured_channel_by_name_with_team_scope():
     assert room.team_id == "team-1"
 
 
+def test_password_fallback_logs_in_once_and_uses_session_token():
+    configuration = MattermostRelayConfiguration(
+        base_url="https://mattermost.test",
+        username="user",
+        password="local-password",
+        channel_id="channel-1",
+    )
+    calls: list[tuple[str, str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path, json.loads(request.content) if request.content else {}))
+        if request.url.path == "/api/v4/users/login":
+            assert request.headers.get("authorization") is None
+            return httpx.Response(200, headers={"Token": "session-token"}, json={"id": "user-id"})
+        assert request.headers.get("authorization") == "Bearer session-token"
+        return httpx.Response(200, json={"id": "channel-1", "team_id": "team-1", "display_name": "Bursar"})
+
+    adapter = MattermostSwitchAdapter(configuration, httpx.Client(transport=httpx.MockTransport(handler)))
+    adapter.create_room("ignored")
+    adapter.create_room("ignored")
+
+    assert calls[0] == ("POST", "/api/v4/users/login", {"login_id": "user", "password": "local-password"})
+    assert sum(path == "/api/v4/users/login" for _, path, _ in calls) == 1
+
+
 def test_name_resolution_rejects_missing_channel():
     adapter = MattermostSwitchAdapter(
         relay_name_configuration(),

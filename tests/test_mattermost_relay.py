@@ -10,7 +10,7 @@ from app.switch_adapter.boundary import LiveMattermostBursarBoundary
 from app.switch_adapter.agent_config import SwitchAgentConfiguration
 from app.switch_adapter.config import MattermostRelayConfiguration, SwitchConfiguration
 from app.switch_adapter.env import load_env_file
-from app.switch_adapter.http import MattermostSwitchAdapter
+from app.switch_adapter.http import MattermostSwitchAdapter, SwitchUnauthorizedError
 from app.switch_adapter.mattermost_relay import MattermostBursarRelay
 
 
@@ -122,6 +122,27 @@ def test_mattermost_relay_config_preserves_id_precedence_over_name(monkeypatch):
     assert configuration.channel_name is None
 
 
+def test_mattermost_token_auth_takes_precedence_over_password_fallback(monkeypatch):
+    monkeypatch.setenv("SWITCH_BASE_URL", "http://mattermost.local")
+    monkeypatch.setenv("SWITCH_TOKEN", "bearer-token")
+    monkeypatch.setenv("SWITCH_USERNAME", "user")
+    monkeypatch.setenv("SWITCH_PASSWORD", "local-password")
+    monkeypatch.setenv("SWITCH_CHANNEL_ID", ROOM)
+
+    configuration = MattermostRelayConfiguration.from_env()
+
+    assert configuration.token is not None
+    assert configuration.username is not None
+    assert configuration.password is not None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == f"/api/v4/channels/{ROOM}"
+        assert request.headers.get("authorization") == "Bearer bearer-token"
+        return httpx.Response(200, json={"id": ROOM, "team_id": "team-1", "display_name": "Bursar"})
+
+    MattermostSwitchAdapter(configuration, httpx.Client(transport=httpx.MockTransport(handler))).create_room("ignored")
+
+
 def test_switch_agent_configuration_remains_separate_and_requires_agent_credentials(monkeypatch):
     for name in ("SWITCH_AGENT_BASE_URL", "SWITCH_AGENT_ID", "SWITCH_AGENT_API_KEY", "SWITCH_ROOM_ID"):
         monkeypatch.delenv(name, raising=False)
@@ -132,7 +153,7 @@ def test_switch_agent_configuration_remains_separate_and_requires_agent_credenti
 def test_missing_mattermost_relay_configuration_names_only_required_variables(monkeypatch):
     for name in ("SWITCH_BASE_URL", "SWITCH_TOKEN", "SWITCH_CHANNEL_ID", "SWITCH_CHANNEL_NAME", "SWITCH_TEAM_ID"):
         monkeypatch.delenv(name, raising=False)
-    with pytest.raises(ValueError, match="missing Mattermost relay configuration: SWITCH_BASE_URL, SWITCH_TOKEN"):
+    with pytest.raises(ValueError, match="missing Mattermost relay configuration: SWITCH_BASE_URL"):
         MattermostRelayConfiguration.from_env()
 
 
@@ -147,6 +168,38 @@ def test_name_based_configuration_requires_team_without_exposing_token(monkeypat
         MattermostRelayConfiguration.from_env()
     assert "SWITCH_TEAM_ID" in str(error.value)
     assert "do-not-print-this-token" not in str(error.value)
+
+
+def test_missing_relay_credentials_names_only_environment_variables(monkeypatch):
+    monkeypatch.setenv("SWITCH_BASE_URL", "http://mattermost.local")
+    monkeypatch.setenv("SWITCH_CHANNEL_ID", ROOM)
+    for name in ("SWITCH_TOKEN", "SWITCH_USERNAME", "SWITCH_PASSWORD"):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(ValueError, match="missing Mattermost relay credentials") as error:
+        MattermostRelayConfiguration.from_env()
+    assert "SWITCH_TOKEN" in str(error.value)
+    assert "SWITCH_USERNAME" in str(error.value)
+    assert "SWITCH_PASSWORD" in str(error.value)
+
+
+def test_failed_password_login_redacts_credentials():
+    configuration = MattermostRelayConfiguration(
+        base_url="http://mattermost.local",
+        username="user",
+        password="super-secret-password",
+        channel_id=ROOM,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v4/users/login"
+        return httpx.Response(401, json={"message": "super-secret-password"})
+
+    adapter = MattermostSwitchAdapter(configuration, httpx.Client(transport=httpx.MockTransport(handler)), max_retries=0)
+    with pytest.raises(SwitchUnauthorizedError) as error:
+        adapter.create_room("ignored")
+    assert "super-secret-password" not in str(error.value)
+    assert "user" not in str(error.value)
 
 
 def test_project_env_loader_reads_ignored_env_without_overriding_process(monkeypatch, tmp_path):

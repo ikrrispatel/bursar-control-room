@@ -50,7 +50,9 @@ class MattermostRelayConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     base_url: str = Field(min_length=1)
-    token: SecretStr = Field(min_length=1)
+    token: SecretStr | None = None
+    username: SecretStr | None = None
+    password: SecretStr | None = None
     channel_id: str | None = None
     channel_name: str | None = None
     team_id: str | None = None
@@ -67,6 +69,8 @@ class MattermostRelayConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def validate_channel_target(self) -> "MattermostRelayConfiguration":
+        if self.token is None and (self.username is None or self.password is None):
+            raise ValueError("Mattermost relay requires SWITCH_TOKEN or SWITCH_USERNAME and SWITCH_PASSWORD")
         if not self.channel_id and not self.channel_name:
             raise ValueError("Mattermost relay requires SWITCH_CHANNEL_ID or SWITCH_CHANNEL_NAME")
         if not self.channel_id and not self.team_id:
@@ -77,18 +81,25 @@ class MattermostRelayConfiguration(BaseModel):
     def from_env(cls) -> "MattermostRelayConfiguration":
         missing = [
             name
-            for name in ("SWITCH_BASE_URL", "SWITCH_TOKEN")
+            for name in ("SWITCH_BASE_URL",)
             if not os.getenv(name)
         ]
         if missing:
             raise ValueError(f"missing Mattermost relay configuration: {', '.join(missing)}")
+        token = os.getenv("SWITCH_TOKEN") or None
+        username = os.getenv("SWITCH_USERNAME") or None
+        password = os.getenv("SWITCH_PASSWORD") or None
+        if token is None and (username is None or password is None):
+            raise ValueError("missing Mattermost relay credentials: SWITCH_TOKEN or SWITCH_USERNAME and SWITCH_PASSWORD")
         channel_id = os.getenv("SWITCH_CHANNEL_ID") or None
         channel_name = os.getenv("SWITCH_CHANNEL_NAME") or None
         if not channel_id and not channel_name:
             raise ValueError("missing Mattermost relay configuration: SWITCH_CHANNEL_ID or SWITCH_CHANNEL_NAME")
         return cls(
             base_url=os.environ["SWITCH_BASE_URL"],
-            token=os.environ["SWITCH_TOKEN"],
+            token=token,
+            username=username,
+            password=password,
             channel_id=channel_id,
             channel_name=None if channel_id else channel_name,
             team_id=os.getenv("SWITCH_TEAM_ID") or None,

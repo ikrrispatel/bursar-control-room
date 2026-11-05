@@ -56,6 +56,7 @@ class MattermostSwitchAdapter:
         self._client = client or httpx.Client(timeout=self.configuration.timeout_seconds)
         self._owns_client = client is None
         self._resolved_room: SwitchRoom | None = None
+        self._session_token: str | None = None
 
     def close(self) -> None:
         if self._owns_client:
@@ -188,7 +189,7 @@ class MattermostSwitchAdapter:
         return self._room_from_provider(matches[0])
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any] | list[Any]:
-        headers = {"Authorization": f"Bearer {self.configuration.token.get_secret_value()}"}
+        headers = {"Authorization": f"Bearer {self._get_auth_token()}"}
         for attempt in range(self.max_retries + 1):
             try:
                 response = self._client.request(
@@ -223,6 +224,53 @@ class MattermostSwitchAdapter:
                 raise SwitchMalformedResponseError("Switch provider returned an unexpected JSON shape")
             return body
         raise SwitchTransportError("Switch request exhausted retries")
+
+    def _get_auth_token(self) -> str:
+        token = getattr(self.configuration, "token", None)
+        if token is not None:
+            return token.get_secret_value()
+        if self._session_token is None:
+            self._login_with_password()
+        if self._session_token is None:
+            raise SwitchTransportError("Mattermost login did not establish a session")
+        return self._session_token
+
+    def _login_with_password(self) -> None:
+        username = getattr(self.configuration, "username", None)
+        password = getattr(self.configuration, "password", None)
+        if username is None or password is None:
+            raise SwitchUnauthorizedError("Mattermost relay credentials are unavailable")
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self._client.request(
+                    "POST",
+                    f"{self.configuration.base_url}/api/v4/users/login",
+                    json={"login_id": username.get_secret_value(), "password": password.get_secret_value()},
+                    timeout=self.configuration.timeout_seconds,
+                )
+            except httpx.TimeoutException as exc:
+                if attempt < self.max_retries:
+                    LOGGER.warning("Mattermost login timeout; retry=%s", attempt + 1)
+                    continue
+                raise SwitchTransportError("Mattermost login timed out after bounded retries") from exc
+            except httpx.RequestError as exc:
+                if attempt < self.max_retries:
+                    LOGGER.warning("Mattermost login failed; retry=%s", attempt + 1)
+                    continue
+                raise SwitchTransportError("Mattermost login failed after bounded retries") from exc
+            if response.status_code in RETRYABLE_STATUS_CODES and attempt < self.max_retries:
+                LOGGER.warning("Mattermost login retryable response; retry=%s status=%s", attempt + 1, response.status_code)
+                continue
+            if response.status_code in {401, 403}:
+                raise SwitchUnauthorizedError("Mattermost login authorization failed")
+            if response.status_code >= 400:
+                raise SwitchProviderError(f"Mattermost login returned HTTP {response.status_code}")
+            session_token = response.headers.get("Token")
+            if not session_token:
+                raise SwitchMalformedResponseError("Mattermost login response did not include a session token")
+            self._session_token = session_token
+            return
+        raise SwitchTransportError("Mattermost login exhausted retries")
 
     @staticmethod
     def _encode_message(message: SwitchMessage) -> str:
