@@ -25,6 +25,10 @@ class IntakeAcknowledgementPayload(BaseModel):
     case_id: str
     status: str
     message: str
+    vendor_name: str
+    invoice_number: str
+    amount: str
+    currency: str
 
 
 class FindingPayload(BaseModel):
@@ -35,6 +39,10 @@ class FindingPayload(BaseModel):
     status: str
     explanation: str
     evidence: list[dict] = Field(default_factory=list)
+    vendor_name: str | None = None
+    invoice_number: str | None = None
+    amount: str | None = None
+    currency: str | None = None
 
 
 class DecisionRequestPayload(BaseModel):
@@ -45,6 +53,10 @@ class DecisionRequestPayload(BaseModel):
     findings: list[FindingPayload]
     evidence: list[dict]
     allowed_actions: list[str]
+    vendor_name: str
+    invoice_number: str
+    amount: str
+    currency: str
 
 
 class DecisionRecordedPayload(BaseModel):
@@ -359,6 +371,10 @@ class LocalBursarWorkflowCoordinator:
             case_id=case.case_id,
             status="received",
             message="Invoice intake received; deterministic fixture checks started.",
+            vendor_name=case.vendor_name,
+            invoice_number=case.invoice_number,
+            amount=str(case.total),
+            currency=case.currency,
         )
         return self._post(self._agent_message(case, MessageType.INTAKE_ACKNOWLEDGEMENT, AgentRole.INTAKE_AGENT, payload))
 
@@ -390,6 +406,10 @@ class LocalBursarWorkflowCoordinator:
                         status=finding.status,
                         explanation=finding.explanation,
                         evidence=finding.evidence,
+                        vendor_name=case.vendor_name,
+                        invoice_number=case.invoice_number,
+                        amount=str(case.total),
+                        currency=case.currency,
                     ),
                 )
             )
@@ -413,6 +433,10 @@ class LocalBursarWorkflowCoordinator:
             findings=findings,
             evidence=[reference.model_dump(mode="json") for reference in intake.evidence],
             allowed_actions=["approve", "reject", "request_clarification", "override"],
+            vendor_name=case.vendor_name,
+            invoice_number=case.invoice_number,
+            amount=str(case.total),
+            currency=case.currency,
         )
         return self._post(
             SwitchMessage(

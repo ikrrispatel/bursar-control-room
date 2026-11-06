@@ -64,6 +64,8 @@ class MattermostBursarRelay:
                 case_id = str(values.pop("case_id", "")).strip()
                 if not case_id:
                     raise ValueError("intake payload requires case_id")
+                if case_id in self._observed_intake_case_ids:
+                    return None
                 intake = InvoiceIntake.model_validate(values)
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise ValueError("malformed Bursar intake payload") from exc

@@ -18,6 +18,7 @@ from app.switch_adapter.models import (
     SwitchRoom,
 )
 from app.switch_adapter.protocol import SwitchAdapter
+from app.switch_adapter.render import render_mattermost_message, render_protocol_debug
 from app.switch_adapter.agent_config import SwitchAgentConfiguration
 from app.switch_adapter.agent_protocol import SwitchAgentProtocolAdapter, SwitchAgentTransportError
 
@@ -37,6 +38,8 @@ __all__ = [
     "SwitchAdapter",
     "SwitchMessage",
     "SwitchRoom",
+    "render_mattermost_message",
+    "render_protocol_debug",
     "SwitchAgentConfiguration",
     "SwitchAgentProtocolAdapter",
     "SwitchAgentTransportError",

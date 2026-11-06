@@ -63,14 +63,15 @@ def test_clean_invoice_relay_routes_intake_approve_and_ledger():
     assert initial and initial.case.case_id == "relay-clean"
     assert initial.case.status.value == "pending_review"
     assert initial.ledger_entry is None
-    assert any("human_decision_request" in item["message"] for item in sent)
+    assert any(item["props"]["bursar_protocol"]["message"]["message_type"] == "human_decision_request" for item in sent)
+    assert any("Human decision required" in item["message"] for item in sent)
 
     posts.append({"id": "human-approve", "channel_id": ROOM, "user_id": "finance-reviewer", "message": "approve relay-clean"})
     final = relay.poll_once()
     assert final and final.case.status.value == "approved"
     assert final.ledger_entry is not None
-    assert any("human_decision_recorded" in item["message"] for item in sent)
-    assert any("ledger_result" in item["message"] for item in sent)
+    assert any(item["props"]["bursar_protocol"]["message"]["message_type"] == "human_decision_recorded" for item in sent)
+    assert any(item["props"]["bursar_protocol"]["message"]["message_type"] == "ledger_result" for item in sent)
     assert any(event.event_type == "human_decision" for event in final.audit_events)
     assert any(event.event_type == "ledger_created" for event in relay.boundary.coordinator.timeline_for_case("relay-clean"))
 

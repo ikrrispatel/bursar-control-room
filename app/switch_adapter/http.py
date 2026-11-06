@@ -17,6 +17,7 @@ from app.switch_adapter.models import (
     SwitchRoom,
 )
 from app.switch_adapter.config import MattermostRelayConfiguration, SwitchConfiguration
+from app.switch_adapter.render import protocol_envelope, render_mattermost_message
 
 
 LOGGER = logging.getLogger(__name__)
@@ -94,11 +95,17 @@ class MattermostSwitchAdapter:
 
     def post_message(self, message: SwitchMessage) -> SwitchMessage:
         self._assert_room(message.room_id)
-        envelope = self._encode_message(message)
+        envelope = protocol_envelope(message)
         response = self._request(
             "POST",
             "/api/v4/posts",
-            json={"channel_id": message.room_id, "message": envelope},
+            json={
+                "channel_id": message.room_id,
+                "message": render_mattermost_message(message),
+                # Mattermost renders only `message`; the typed protocol remains
+                # available to technical consumers without cluttering the room.
+                "props": {"bursar_protocol": envelope},
+            },
         )
         provider_id = self._required_string(response, "id")
         provider_channel = self._required_string(response, "channel_id")
@@ -113,13 +120,14 @@ class MattermostSwitchAdapter:
         for post in posts:
             if self._required_string(post, "channel_id") != room_id:
                 raise SwitchMalformedResponseError("provider returned a post for another channel")
+            props = post.get("props")
+            envelope = props.get("bursar_protocol") if isinstance(props, dict) else None
             text = post.get("message")
-            if not isinstance(text, str) or not text.startswith("{"):
-                continue
-            try:
-                envelope = json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise SwitchMalformedResponseError("provider returned invalid message JSON") from exc
+            if envelope is None and isinstance(text, str) and text.startswith("{"):
+                try:
+                    envelope = json.loads(text)
+                except json.JSONDecodeError as exc:
+                    raise SwitchMalformedResponseError("provider returned invalid message JSON") from exc
             if not isinstance(envelope, dict) or envelope.get("schema") != ENVELOPE_SCHEMA:
                 continue
             message = self._decode_message(envelope, self._required_string(post, "id"))
@@ -296,7 +304,7 @@ class MattermostSwitchAdapter:
 
     @staticmethod
     def _encode_message(message: SwitchMessage) -> str:
-        return json.dumps({"schema": ENVELOPE_SCHEMA, "message": message.model_dump(mode="json")}, separators=(",", ":"), sort_keys=True)
+        return json.dumps(protocol_envelope(message), separators=(",", ":"), sort_keys=True)
 
     @staticmethod
     def _decode_message(envelope: dict[str, Any], provider_id: str) -> SwitchMessage:

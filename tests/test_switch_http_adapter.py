@@ -62,9 +62,9 @@ def test_resolves_room_posts_typed_message_and_lists_case_messages():
         if request.method == "POST" and request.url.path == "/api/v4/posts":
             body = json.loads(request.content)
             posted["body"] = body
-            return httpx.Response(201, json={"id": "post-1", "channel_id": "channel-1", "message": body["message"]})
+            return httpx.Response(201, json={"id": "post-1", "channel_id": "channel-1", "message": body["message"], "props": body["props"]})
         if request.method == "GET" and request.url.path == "/api/v4/channels/channel-1/posts":
-            return httpx.Response(200, json={"order": ["post-1"], "posts": {"post-1": {"id": "post-1", "channel_id": "channel-1", "message": posted["body"]["message"]}}})
+            return httpx.Response(200, json={"order": ["post-1"], "posts": {"post-1": {"id": "post-1", "channel_id": "channel-1", "message": posted["body"]["message"], "props": posted["body"]["props"]}}})
         return httpx.Response(404)
 
     adapter = MattermostSwitchAdapter(configuration(), httpx.Client(transport=httpx.MockTransport(handler)))
